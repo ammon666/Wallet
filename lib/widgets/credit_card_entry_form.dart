@@ -44,13 +44,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   @override
   void initState() {
     super.initState();
-    if (widget.existingWallet != null &&
-        widget.existingWallet!.color != null &&
-        widget.existingWallet!.color!.isNotEmpty) {
-      _selectedColor = widget.existingWallet!.color!;
-    } else {
-      _selectedColor = widget.initialColor ?? 'default';
-    }
+    _selectedColor = widget.initialColor ?? 'default';
     _nameController.addListener(_onFieldChanged);
     _numberController.addListener(_onNumberChanged);
     _expiryController.addListener(_onFieldChanged);
