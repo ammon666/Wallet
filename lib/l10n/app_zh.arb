@@ -276,7 +276,6 @@
   "descriptionLabel": "描述",
   "logoTextLabel": "徽标文字",
   "savePassButton": "保存票卡",
-  "scannedResult": "已扫描 {format}：{text}",
   "noBarcodeDetected": "所选图片中未检测到条码或二维码。",
   "errorReadingImage": "读取图片文件出错。",
   "orgPlaceholder": "机构名称",
@@ -479,5 +478,6 @@
   "fieldTermsConditions": "条款与条件",
   "fieldContact": "联系方式",
   "nameOrganizationLabel": "名称（发卡机构）",
-  "saveBackupDialogTitle": "保存备份文件"
+  "saveBackupDialogTitle": "保存备份文件",
+  "noCvvPlaceholder": "无 CVV"
 }

@@ -354,8 +354,6 @@
   "descriptionLabel": "Description",
   "logoTextLabel": "Logo Text",
   "savePassButton": "SAVE PASS",
-  "scannedResult": "Scanned {format}: {text}",
-  "@scannedResult": {"description": "Snackbar after scanning barcode from image", "placeholders": {"format": {"type": "String"}, "text": {"type": "String"}}},
   "noBarcodeDetected": "No barcode or QR code detected in the selected image.",
   "errorReadingImage": "Error reading image file.",
   "orgPlaceholder": "ORGANIZATION",
@@ -569,5 +567,7 @@
   "nameOrganizationLabel": "Name (Organization)",
   "@nameOrganizationLabel": {"description": "Label for the organization name field in barcode pass entry form"},
   "saveBackupDialogTitle": "Save Backup File",
-  "@saveBackupDialogTitle": {"description": "Title of the native save-file dialog when creating a backup"}
+  "@saveBackupDialogTitle": {"description": "Title of the native save-file dialog when creating a backup"},
+  "noCvvPlaceholder": "No CVV",
+  "@noCvvPlaceholder": {"description": "Placeholder shown in card details when CVV is not stored"}
 }

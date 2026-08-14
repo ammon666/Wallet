@@ -87,7 +87,8 @@ class _MyAppState extends State<MyApp> {
           listen: false,
         );
         return MaterialApp(
-          onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+          onGenerateTitle: (context) =>
+              AppLocalizations.of(context)?.appTitle ?? '钱包',
           debugShowCheckedModeBanner: false,
           theme: themeProvider.lightTheme,
           darkTheme: themeProvider.darkTheme,

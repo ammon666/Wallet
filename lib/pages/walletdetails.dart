@@ -295,7 +295,9 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
                               .withValues(alpha: 0.6),
                         ),
                         onPressed: () {
-                          ClipboardService.instance.copy(currentWallet.cvv);
+                          final cvv = currentWallet.cvv;
+                          if (cvv == null || cvv.isEmpty) return;
+                          ClipboardService.instance.copy(cvv);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text(l.cvvCopied)),
                           );
