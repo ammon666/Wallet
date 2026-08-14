@@ -1,6 +1,9 @@
 package com.sidhant.wallet
 
 import androidx.annotation.NonNull
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugins.GeneratedPluginRegistrant
@@ -13,21 +16,23 @@ import android.net.Uri
 import java.io.OutputStream
 import android.provider.DocumentsContract
 
-class MainActivity: FlutterFragmentActivity() 
+class MainActivity: FlutterFragmentActivity()
   {
     private val CHANNEL = "com.sidhant.wallet/save_file"
+    private val PIN_AUTH_CHANNEL = "com.sidhant.wallet/pin_auth"
     private var pendingBytes: ByteArray? = null
     private var pendingResult: MethodChannel.Result? = null
     private var pendingFilename: String? = null
+    private var pinAuthResult: MethodChannel.Result? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
       super.onCreate(savedInstanceState)
       window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
-    override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) 
+    override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine)
       {
-        GeneratedPluginRegistrant.registerWith(flutterEngine) 
+        GeneratedPluginRegistrant.registerWith(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
           when (call.method) {
             "savePkpass" -> {
@@ -119,7 +124,67 @@ class MainActivity: FlutterFragmentActivity()
             else -> result.notImplemented()
           }
         }
+
+        // PIN-only authentication channel: forces BiometricPrompt to use
+        // Authenticators.DEVICE_CREDENTIAL (PIN/password/pattern), explicitly
+        // excluding fingerprint/face. Used for destructive "delete all data".
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PIN_AUTH_CHANNEL).setMethodCallHandler { call, result ->
+          when (call.method) {
+            "isSupported" -> {
+              val canAuth = BiometricManager.from(this).canAuthenticate(
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+              )
+              // BIOMETRIC_SUCCESS == 0 means an authenticator is available.
+              result.success(canAuth == BiometricManager.BIOMETRIC_SUCCESS)
+            }
+            "authenticate" -> {
+              val title = call.argument<String>("title") ?: "PIN"
+              val subtitle = call.argument<String>("subtitle")
+              if (pinAuthResult != null) {
+                result.error("ALREADY_IN_PROGRESS", "PIN auth already pending", null)
+                return@setMethodCallHandler
+              }
+              authenticateWithDeviceCredential(result, title, subtitle)
+            }
+            else -> result.notImplemented()
+          }
+        }
       }
+
+    private fun authenticateWithDeviceCredential(
+      result: MethodChannel.Result,
+      title: String,
+      subtitle: String?
+    ) {
+      val executor = ContextCompat.getMainExecutor(this)
+      val builder = BiometricPrompt.PromptInfo.Builder()
+        .setTitle(title)
+        // DEVICE_CREDENTIAL only — no fingerprint/face.
+        .setAllowedAuthenticators(BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+      if (!subtitle.isNullOrEmpty()) {
+        builder.setSubtitle(subtitle)
+      }
+      val promptInfo = builder.build()
+      pinAuthResult = result
+      val biometricPrompt = BiometricPrompt(this, executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+          override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
+            pinAuthResult?.success(true)
+            pinAuthResult = null
+          }
+          override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+            // User cancel / back / any error -> treat as auth failed (false).
+            pinAuthResult?.success(false)
+            pinAuthResult = null
+          }
+        })
+      try {
+        biometricPrompt.authenticate(promptInfo)
+      } catch (e: Exception) {
+        pinAuthResult?.success(false)
+        pinAuthResult = null
+      }
+    }
 
     private fun buildChildUri(treeUri: Uri, filename: String): Uri {
       val treeDocumentId = DocumentsContract.getTreeDocumentId(treeUri)

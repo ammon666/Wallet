@@ -7,6 +7,7 @@ import 'package:wallet/models/theme_provider.dart';
 import 'package:wallet/models/startup_settings_provider.dart';
 import 'package:wallet/services/pkpass_service.dart';
 import 'package:wallet/services/auto_backup_service.dart';
+import 'package:wallet/widgets/color_picker.dart';
 import 'package:wallet/widgets/credit_card_entry_form.dart';
 import 'package:wallet/widgets/barcode_card_entry_form.dart';
 import 'package:wallet/widgets/identity_card_entry_form.dart';
@@ -100,20 +101,49 @@ class _AddCardScreenState extends State<AddCardScreen> {
 
     final int effectiveIndex = startupProvider.paymentsOnlyMode ? 0 : widget.initialTabIndex;
 
+    // Gather colors already used by existing cards/passes/identities
+    // so the default Apple-palette color does not repeat when avoidable.
+    final existingColors = <String>{};
+    final walletProvider = context.read<WalletProvider>();
+    for (final w in walletProvider.wallets) {
+      if (w.color != null && w.color!.isNotEmpty) existingColors.add(w.color!);
+    }
+    final passProvider = context.read<PassProvider>();
+    for (final p in passProvider.passes) {
+      if (p.backgroundColor != null && p.backgroundColor!.isNotEmpty) {
+        existingColors.add(p.backgroundColor!);
+      }
+    }
+    final identityProvider = context.read<IdentityProvider>();
+    for (final i in identityProvider.identities) {
+      if (i.color != null && i.color!.isNotEmpty) existingColors.add(i.color!);
+    }
+
     Widget form;
 
     switch (effectiveIndex) {
       case 1:
         form = BarcodeCardEntryForm(
           initialSharedImagePath: widget.initialSharedImagePath,
+          initialColor: ColorPicker.pickAppleCardColorDefault(
+            excludeColors: existingColors,
+          ),
         );
         break;
       case 2:
-        form = IdentityCardEntryForm();
+        form = IdentityCardEntryForm(
+          initialColor: ColorPicker.pickAppleCardColorDefault(
+            excludeColors: existingColors,
+          ),
+        );
         break;
       case 0:
       default:
-        form = CreditCardEntryForm();
+        form = CreditCardEntryForm(
+          initialColor: ColorPicker.pickAppleCardColorDefault(
+            excludeColors: existingColors,
+          ),
+        );
         break;
     }
 

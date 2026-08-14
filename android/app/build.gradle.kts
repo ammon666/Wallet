@@ -83,3 +83,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // BiometricPrompt with DEVICE_CREDENTIAL-only authenticator for PIN/password
+    // verification (used by the "Delete all data" flow to force PIN, not fingerprint).
+    implementation("androidx.biometric:biometric:1.1.0")
+}

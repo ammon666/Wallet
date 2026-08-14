@@ -7,8 +7,8 @@ class StartupSettingsProvider with ChangeNotifier {
   bool _showAuthenticationScreen = true;
   int _defaultScreenIndex = 0;
   bool _paymentsOnlyMode = false;
-  String _selectedCurrencyCode = 'INR';
-  String _selectedCurrencySymbol = '₹';
+  String _selectedCurrencyCode = 'CNY';
+  String _selectedCurrencySymbol = '¥';
 
   static const String _authKey = 'showAuthenticationScreen';
   static const String _defaultScreenKey = 'defaultScreenIndex';
@@ -43,8 +43,8 @@ class StartupSettingsProvider with ChangeNotifier {
     _showAuthenticationScreen = prefs.getBool(_authKey) ?? true;
     _defaultScreenIndex = prefs.getInt(_defaultScreenKey) ?? 0;
     _paymentsOnlyMode = prefs.getBool(_paymentsOnlyKey) ?? prefs.getBool('hideIdentityAndLoyalty') ?? false;
-    _selectedCurrencyCode = prefs.getString(_currencyCodeKey) ?? 'INR';
-    _selectedCurrencySymbol = prefs.getString(_currencySymbolKey) ?? '₹';
+    _selectedCurrencyCode = prefs.getString(_currencyCodeKey) ?? 'CNY';
+    _selectedCurrencySymbol = prefs.getString(_currencySymbolKey) ?? '¥';
     notifyListeners();
   }
 

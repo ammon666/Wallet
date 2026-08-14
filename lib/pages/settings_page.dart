@@ -14,6 +14,7 @@ import 'package:wallet/models/provider_helper.dart';
 import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/models/auto_backup_provider.dart';
 import 'package:wallet/services/saf_service.dart';
+import 'package:wallet/services/pin_auth_service.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -97,8 +98,6 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          _buildSponsorshipBanner(context, isDark),
-          const SizedBox(height: 16),
           _LiquidGlassSection(
             title: l.sectionStartupLayout,
             icon: Icons.rocket_launch_outlined,
@@ -263,29 +262,20 @@ class _SettingsPageState extends State<SettingsPage> {
                 subtitle: l.restoreBackupSubtitle,
                 onTap: () => _showRestoreDialog(themeProvider),
               ),
-              Divider(
-                color: isDark
-                    ? const Color(0xFF2A2A2A)
-                    : const Color(0xFFE8E8E8),
-                height: 1,
-              ),
+            ],
+          ),
+
+          _LiquidGlassSection(
+            title: l.sectionDangerZone,
+            icon: Icons.dangerous_outlined,
+            initiallyCollapsed: true,
+            collapsedSubtitle: l.dangerZoneSubtitle,
+            children: [
               _LiquidGlassTile(
                 icon: Icons.delete_forever_outlined,
                 title: l.deleteAllDataTitle,
                 subtitle: l.deleteAllDataSubtitle,
                 onTap: () => _showDeleteAllDataDialog(themeProvider),
-              ),
-              Divider(
-                color: isDark
-                    ? const Color(0xFF2A2A2A)
-                    : const Color(0xFFE8E8E8),
-                height: 1,
-              ),
-              _LiquidGlassTile(
-                icon: Icons.info_outline_rounded,
-                title: l.trademarkNoticeTitle,
-                subtitle: l.trademarkNoticeSubtitle,
-                onTap: () => _showTrademarkNotice(isDark),
               ),
             ],
           ),
@@ -295,12 +285,24 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.info_outline_rounded,
             children: [
               _LiquidGlassTile(
+                icon: Icons.info_outline_rounded,
+                title: l.trademarkNoticeTitle,
+                subtitle: l.trademarkNoticeSubtitle,
+                onTap: () => _showTrademarkNotice(isDark),
+              ),
+              Divider(
+                color: isDark
+                    ? const Color(0xFF2A2A2A)
+                    : const Color(0xFFE8E8E8),
+                height: 1,
+              ),
+              _LiquidGlassTile(
                 icon: Icons.bug_report_outlined,
                 title: l.reportErrorTitle,
                 subtitle: l.reportErrorSubtitle,
                 onTap: () async {
                   HapticFeedback.mediumImpact();
-                  const url = 'https://github.com/sidhant947/Wallet/issues';
+                  const url = 'https://github.com/ammon666/Wallet';
                   if (await canLaunchUrl(Uri.parse(url))) {
                     await launchUrl(
                       Uri.parse(url),
@@ -769,8 +771,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _showDeleteAllDataDialog(ThemeProvider themeProvider) async {
-    final authenticated = await _authenticateForDestructiveAction();
-    if (!authenticated || !mounted) return;
     final isDark = themeProvider.isDarkMode;
     final l = AppLocalizations.of(context)!;
     showDialog(
@@ -786,8 +786,22 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           FilledButton(
             onPressed: () async {
+              Navigator.pop(ctx);
+              // 「删除所有数据」强制使用 PIN/密码验证，不接受指纹。
+              final supported = await PinAuthService.isSupported();
+              if (!supported) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(l.pinAuthUnavailable)),
+                );
+                return;
+              }
+              final authenticated = await PinAuthService.authenticate(
+                title: l.dangerZonePinAuthTitle,
+                subtitle: l.dangerZonePinAuthSubtitle,
+              );
+              if (!authenticated || !mounted) return;
               await _performDeleteAllData();
-              if (ctx.mounted) Navigator.pop(ctx);
             },
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: Text(l.deleteEverythingButton),
@@ -892,104 +906,117 @@ class _SettingsPageState extends State<SettingsPage> {
       ).showSnackBar(SnackBar(content: Text(l.deleteFailedRetry)));
     }
   }
-
-  Widget _buildSponsorshipBanner(BuildContext context, bool isDark) {
-    final l = AppLocalizations.of(context)!;
-    return GestureDetector(
-      onTap: () async {
-        HapticFeedback.mediumImpact();
-        const url = 'https://ko-fi.com/sidhant947';
-        if (await canLaunchUrl(Uri.parse(url))) {
-          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE8E8E8),
-            width: 0.5,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.coffee_outlined,
-              size: 20,
-              color: isDark ? Colors.white70 : Colors.black87,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                l.buyMeACoffee,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.white : Colors.black,
-                ),
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 14,
-              color: isDark ? Colors.white30 : Colors.black38,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-class _LiquidGlassSection extends StatelessWidget {
+class _LiquidGlassSection extends StatefulWidget {
   final String title;
   final IconData? icon;
   final List<Widget> children;
+  /// 当为 true 时，section 默认折叠，点击 header 展开。
+  /// 默认 false（保持现有展开行为）。
+  final bool initiallyCollapsed;
+  /// 折叠时 header 旁显示的副标题（可选）。
+  final String? collapsedSubtitle;
   const _LiquidGlassSection({
     required this.title,
     this.icon,
     required this.children,
+    this.initiallyCollapsed = false,
+    this.collapsedSubtitle,
   });
+
+  @override
+  State<_LiquidGlassSection> createState() => _LiquidGlassSectionState();
+}
+
+class _LiquidGlassSectionState extends State<_LiquidGlassSection> {
+  late bool _expanded = !widget.initiallyCollapsed;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
     final color = isDark ? Colors.white38 : Colors.black38;
+    final isDanger = widget.initiallyCollapsed;
+    final headerColor = isDanger
+        ? (isDark ? const Color(0xFFFF6B6B) : const Color(0xFFD32F2F))
+        : color;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8, top: 12),
-          child: Row(
-            children: [
-              if (icon != null) Icon(icon, size: 14, color: color),
-              const SizedBox(width: 8),
-              Text(
-                title.toUpperCase(),
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                  letterSpacing: 1.2,
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.initiallyCollapsed
+              ? () => setState(() => _expanded = !_expanded)
+              : null,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8, top: 12),
+            child: Row(
+              children: [
+                if (widget.icon != null)
+                  Icon(widget.icon, size: 14, color: headerColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title.toUpperCase(),
+                        style: TextStyle(
+                          color: headerColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      if (widget.initiallyCollapsed &&
+                          widget.collapsedSubtitle != null &&
+                          !_expanded)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            widget.collapsedSubtitle!,
+                            style: TextStyle(
+                              color: isDark ? Colors.white30 : Colors.black38,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                if (widget.initiallyCollapsed)
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: headerColor,
+                  ),
+              ],
+            ),
           ),
         ),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Material(
-            color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F5F5),
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE8E8E8),
-                  width: 0.5,
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 200),
+          crossFadeState: _expanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          firstChild: const SizedBox(width: double.infinity, height: 0),
+          secondChild: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Material(
+              color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F5F5),
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: isDark
+                        ? const Color(0xFF2A2A2A)
+                        : const Color(0xFFE8E8E8),
+                    width: 0.5,
+                  ),
                 ),
+                child: Column(children: widget.children),
               ),
-              child: Column(children: children),
             ),
           ),
         ),

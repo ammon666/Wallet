@@ -12,7 +12,8 @@ import 'package:wallet/l10n/app_localizations.dart';
 
 class IdentityCardEntryForm extends StatefulWidget {
   final IdentityCard? existingCard;
-  const IdentityCardEntryForm({super.key, this.existingCard});
+  final String? initialColor;
+  const IdentityCardEntryForm({super.key, this.existingCard, this.initialColor});
 
   @override
   State<IdentityCardEntryForm> createState() => IdentityCardEntryFormState();
@@ -24,7 +25,7 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
   final _cardTypeController = TextEditingController();
   String? _frontImagePath;
   String? _backImagePath;
-  String _selectedColor = 'obsidian';
+  late String _selectedColor;
   bool _isSaving = false;
 
   @override
@@ -37,6 +38,8 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
       _frontImagePath = widget.existingCard!.frontImagePath;
       _backImagePath = widget.existingCard!.backImagePath;
       _selectedColor = widget.existingCard!.color ?? 'obsidian';
+    } else {
+      _selectedColor = widget.initialColor ?? 'obsidian';
     }
     _nameController.addListener(() => setState(() {}));
     _valueController.addListener(() => setState(() {}));

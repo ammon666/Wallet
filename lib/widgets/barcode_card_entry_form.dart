@@ -15,11 +15,13 @@ import 'package:wallet/models/pass_types.dart';
 class BarcodeCardEntryForm extends StatefulWidget {
   final Pass? existingPass;
   final String? initialSharedImagePath;
+  final String? initialColor;
 
   const BarcodeCardEntryForm({
     super.key,
     this.existingPass,
     this.initialSharedImagePath,
+    this.initialColor,
   });
 
   @override
@@ -32,11 +34,11 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
   final _logoTextController = TextEditingController();
   final _barcodeValueController = TextEditingController();
 
-  bool _showAdditionalDetails = false;
+  bool _showAdditionalDetails = true;
   bool _isSaving = false;
 
   String _selectedType = 'generic';
-  String _selectedColor = 'obsidian';
+  late String _selectedColor;
   String _selectedBarcodeFormat = 'QR Code';
   String? _transitType;
   String? _frontImagePath;
@@ -110,8 +112,11 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
       // Load color from existing pass background color
       if (p.backgroundColor != null && p.backgroundColor!.isNotEmpty) {
         _selectedColor = p.backgroundColor!;
+      } else {
+        _selectedColor = widget.initialColor ?? 'obsidian';
       }
     } else {
+      _selectedColor = widget.initialColor ?? 'obsidian';
       _prepopulateFields();
     }
 

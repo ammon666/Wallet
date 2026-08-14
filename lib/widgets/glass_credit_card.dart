@@ -89,11 +89,11 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.contactless_rounded,
-                        color: Colors.white.withValues(alpha: 0.784),
-                        size: 32,
+                      _IssuerBadge(
+                        issuer: widget.wallet.issuer,
+                        network: widget.wallet.network,
                       ),
                       SizedBox(
                         height: 36,
@@ -162,6 +162,49 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Issuer (发卡行) badge shown in the top-left corner of the card.
+/// Priority:
+///   1. Custom issuer text entered by the user (e.g. "招商银行" / "ICBC").
+///   2. Fallback to the card network display name
+///      (Visa / Mastercard / 银联 / JCB / ...).
+class _IssuerBadge extends StatelessWidget {
+  final String? issuer;
+  final String? network;
+
+  const _IssuerBadge({this.issuer, this.network});
+
+  @override
+  Widget build(BuildContext context) {
+    final raw = (issuer != null && issuer!.trim().isNotEmpty)
+        ? issuer!.trim()
+        : (CardUtils.networkDisplayName(network) ?? 'CARD');
+    final display = raw.length > 8 ? '${raw.substring(0, 8)}…' : raw;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 150),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 0.5,
+        ),
+      ),
+      child: Text(
+        display,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
         ),
       ),
     );

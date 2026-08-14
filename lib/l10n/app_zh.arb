@@ -50,6 +50,8 @@
   "copiedToClipboard": "已复制到剪贴板",
   "qrDataCopied": "二维码数据已复制到剪贴板",
 
+  "deleteWalletTitle": "删除银行卡？",
+  "cardDeleted": "银行卡已删除！",
   "deletePassTitle": "删除票卡？",
   "deleteIdentityTitle": "删除证件？",
   "deleteConfirmBody": "确定要删除“{name}”吗？此操作无法撤销。",
@@ -161,6 +163,11 @@
   "deleteEverythingButton": "全部删除",
   "allDataDeleted": "所有数据已删除。",
   "deleteFailedRetry": "删除失败，请重试。",
+  "sectionDangerZone": "危险操作",
+  "dangerZoneSubtitle": "不可逆的危险操作",
+  "dangerZonePinAuthTitle": "验证 PIN",
+  "dangerZonePinAuthSubtitle": "请输入设备 PIN 码以删除所有数据，不可使用指纹。",
+  "pinAuthUnavailable": "本设备不支持 PIN 验证。请先在系统设置中设置屏幕锁定（PIN/密码）后再操作。",
 
   "trademarkNoticeTitle": "商标声明",
   "trademarkNoticeSubtitle": "卡组织徽标均为其各自所有者的商标。",

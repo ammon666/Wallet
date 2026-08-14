@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wallet/l10n/app_localizations.dart';
@@ -12,6 +13,30 @@ class ColorPicker extends StatelessWidget {
     required this.selectedColor,
     required this.onColorSelected,
   });
+
+  /// Apple-inspired color palette used as defaults for brand-new cards.
+  /// Colors match the modern iOS design language (vivid, muted saturation,
+  /// warm undertones). Users can still pick any custom color afterward.
+  static const List<String> appleColorPalette = [
+    '#FF3B30', // iOS Red
+    '#FF9500', // iOS Orange
+    '#FFCC00', // iOS Yellow
+    '#34C759', // iOS Green
+    '#00C7BE', // iOS Teal
+    '#30B0C7', // iOS Aqua-like teal
+    '#007AFF', // iOS Blue
+    '#5856D6', // iOS Purple
+    '#AF52DE', // iOS Deep Purple
+    '#FF2D55', // iOS Pink
+    '#A2845E', // Warm Taupe (Apple Cash-like)
+    '#8E8E93', // iOS Gray (cool neutral)
+    '#636366', // iOS Dark Gray (metallic)
+    '#3A3A3C', // Near-black (iPhone Pro)
+    '#0A84FF', // iOS Deep Blue (iMac blue)
+    '#FB5D87', // Soft magenta (iPhone 15 Pink)
+    '#F5E6D3', // Warm cream (Starlight)
+    '#C0C0C0', // Silver (Apple Watch Ultra silver)
+  ];
 
   static const List<String> _presetColors = [
     '#0F0F0F',
@@ -31,6 +56,36 @@ class ColorPicker extends StatelessWidget {
     '#D97706',
     '#059669',
   ];
+
+  /// Pick a random color from [appleColorPalette] that is NOT already in
+  /// [excludeColors]. If every palette color is already used, fall back to
+  /// any random palette color (allowing repetition, per user requirement).
+  /// Matching against [excludeColors] is case-insensitive and ignores '#'.
+  static String pickAppleCardColorDefault({
+    Iterable<String>? excludeColors,
+    Random? random,
+  }) {
+    final r = random ?? Random();
+    final palette = appleColorPalette;
+    if (palette.isEmpty) return '#007AFF';
+
+    final normalizedExclude = <String>{};
+    if (excludeColors != null) {
+      for (final c in excludeColors) {
+        if (c.isEmpty) continue;
+        final clean = c.replaceAll('#', '').trim().toUpperCase();
+        if (clean.isNotEmpty) normalizedExclude.add(clean);
+      }
+    }
+
+    final available = palette.where((c) {
+      final clean = c.replaceAll('#', '').trim().toUpperCase();
+      return !normalizedExclude.contains(clean);
+    }).toList();
+
+    final pool = available.isNotEmpty ? available : palette;
+    return pool[r.nextInt(pool.length)];
+  }
 
   Color _parseHex(String hexString) {
     String clean = hexString.replaceAll('#', '').trim();

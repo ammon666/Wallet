@@ -15,7 +15,8 @@ import 'package:wallet/widgets/image_picker_widget.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 
 class CreditCardEntryForm extends StatefulWidget {
-  const CreditCardEntryForm({super.key});
+  final String? initialColor;
+  const CreditCardEntryForm({super.key, this.initialColor});
 
   @override
   State<CreditCardEntryForm> createState() => _CreditCardEntryFormState();
@@ -29,12 +30,12 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   final _cvvController = TextEditingController();
   final _issuerController = TextEditingController();
   String _network = "visa";
-  String _selectedColor = 'default';
+  late String _selectedColor;
   File? _frontImageFile;
   File? _backImageFile;
-  bool _showAdditionalDetails = false;
+  bool _showAdditionalDetails = true;
   bool _isSaving = false;
-  bool _cvvVisible = false;
+  bool _cvvVisible = true;
 
   final _customFieldNameControllers = <TextEditingController>[];
   final _customFieldValueControllers = <TextEditingController>[];
@@ -43,6 +44,13 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   @override
   void initState() {
     super.initState();
+    if (widget.existingWallet != null &&
+        widget.existingWallet!.color != null &&
+        widget.existingWallet!.color!.isNotEmpty) {
+      _selectedColor = widget.existingWallet!.color!;
+    } else {
+      _selectedColor = widget.initialColor ?? 'default';
+    }
     _nameController.addListener(_onFieldChanged);
     _numberController.addListener(_onNumberChanged);
     _expiryController.addListener(_onFieldChanged);

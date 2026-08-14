@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:wallet/services/clipboard_service.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:barcode_scan2/barcode_scan2.dart';
@@ -13,7 +14,6 @@ import 'package:wallet/pages/add_card_screen.dart';
 import 'package:wallet/pages/settings_page.dart';
 import 'package:wallet/widgets/barcode_card.dart';
 import 'package:wallet/widgets/glass_credit_card.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:wallet/screens/barcode_card_details_screen.dart';
 import 'package:wallet/services/encryption_service.dart';
 import '../models/db_helper.dart';
@@ -504,6 +504,77 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<bool> _authenticateForDestructiveAction() async {
+    if (Platform.isLinux) return true;
+    final auth = LocalAuthentication();
+    final supported = await auth.isDeviceSupported();
+    if (!supported) return true;
+    final l = AppLocalizations.of(context)!;
+    return auth.authenticate(
+      localizedReason: l.authenticateAction,
+      options: const AuthenticationOptions(stickyAuth: true),
+    );
+  }
+
+  void _showWalletDeleteConfirmationDialog({
+    required int id,
+    required String name,
+  }) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
+
+    showDialog(
+      context: context,
+      barrierColor: isDark ? Colors.black54 : Colors.black26,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
+          title: Text(
+            l.deleteWalletTitle,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            l.deleteConfirmBody(name),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.white70 : Colors.black87,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(
+                l.cancelButton,
+                style: TextStyle(
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () async {
+                HapticFeedback.mediumImpact();
+                Navigator.of(ctx).pop();
+                final ok = await _authenticateForDestructiveAction();
+                if (!ok || !mounted) return;
+                await context.read<WalletProvider>().deleteWallet(id);
+                if (!mounted) return;
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(l.cardDeleted)));
+              },
+              child: Text(l.deleteButton),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showPassDeleteConfirmationDialog({
     required int id,
     required String name,
@@ -544,10 +615,13 @@ class _HomeScreenState extends State<HomeScreen> {
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.error,
               ),
-              onPressed: () {
+              onPressed: () async {
                 HapticFeedback.mediumImpact();
-                context.read<PassProvider>().deletePass(id);
                 Navigator.of(ctx).pop();
+                final ok = await _authenticateForDestructiveAction();
+                if (!ok || !mounted) return;
+                await context.read<PassProvider>().deletePass(id);
+                if (!mounted) return;
                 ScaffoldMessenger.of(
                   context,
                 ).showSnackBar(SnackBar(content: Text(l.passDeleted)));
@@ -573,24 +647,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: Container(
-          margin: const EdgeInsets.all(8),
-          child: IconButton(
-            icon: Icon(
-              Icons.star,
-              color: isDark ? Colors.amber.shade300 : Colors.amber.shade700,
-            ),
-            onPressed: () async {
-              HapticFeedback.lightImpact();
-              const url = 'https://github.com/sidhant947/Wallet';
-              await launchUrl(
-                Uri.parse(url),
-                mode: LaunchMode.externalApplication,
-              );
-            },
-          ),
-        ),
-
         actions: [
           Container(
             margin: const EdgeInsets.all(8),
@@ -961,11 +1017,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                 label: l.actionCopy,
                               ),
                               SlidableAction(
-                                onPressed: (ctx) async {
+                                onPressed: (ctx) {
                                   HapticFeedback.mediumImpact();
-                                  await context
-                                      .read<WalletProvider>()
-                                      .deleteWallet(wallet.id!);
+                                  _showWalletDeleteConfirmationDialog(
+                                    id: wallet.id!,
+                                    name: wallet.name,
+                                  );
                                 },
                                 backgroundColor: Colors.transparent,
                                 foregroundColor: Colors.red,
@@ -1254,10 +1311,13 @@ class _HomeScreenState extends State<HomeScreen> {
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.error,
               ),
-              onPressed: () {
+              onPressed: () async {
                 HapticFeedback.mediumImpact();
-                context.read<IdentityProvider>().deleteIdentity(id);
                 Navigator.of(ctx).pop();
+                final ok = await _authenticateForDestructiveAction();
+                if (!ok || !mounted) return;
+                await context.read<IdentityProvider>().deleteIdentity(id);
+                if (!mounted) return;
                 ScaffoldMessenger.of(
                   context,
                 ).showSnackBar(SnackBar(content: Text(l.identityDeleted)));
