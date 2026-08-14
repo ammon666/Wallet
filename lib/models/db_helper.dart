@@ -35,7 +35,7 @@ class DatabaseHelper {
     final path = join(directory.path, 'walletbox.db');
     return openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE wallets(
@@ -43,6 +43,7 @@ class DatabaseHelper {
             name TEXT,
             number TEXT,
             expiry TEXT,
+            cvv TEXT,
             network TEXT,
             issuer TEXT,
             customFields TEXT,
@@ -100,6 +101,9 @@ class DatabaseHelper {
           await db.execute(
             'CREATE INDEX idx_wallets_order ON wallets(orderIndex);',
           );
+        }
+        if (oldVersion < 8) {
+          await db.execute('ALTER TABLE wallets ADD COLUMN cvv TEXT;');
         }
       },
     );

@@ -9,6 +9,7 @@ import 'package:wallet/widgets/encrypted_image_display.dart';
 import 'package:wallet/widgets/full_screen_image_viewer.dart';
 import 'package:wallet/screens/homescreen.dart';
 import 'package:wallet/widgets/identity_card_entry_form.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/screens/share_secure_screen.dart';
 
 class IdentityCardDetailScreen extends StatefulWidget {
@@ -103,6 +104,7 @@ class _IdentityCardDetailScreenState extends State<IdentityCardDetailScreen> {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
@@ -185,7 +187,7 @@ class _IdentityCardDetailScreenState extends State<IdentityCardDetailScreen> {
             onTap: () {
               ClipboardService.instance.copy(currentCard.value);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('ID Number Copied!')),
+                SnackBar(content: Text(l.idNumberCopied)),
               );
             },
           ),
@@ -193,7 +195,7 @@ class _IdentityCardDetailScreenState extends State<IdentityCardDetailScreen> {
           
           if (_isPathValid(currentCard.frontImagePath) || _isPathValid(currentCard.backImagePath))
             _LiquidGlassDetailSection(
-              title: "Identity Images",
+              title: l.identityImagesTitle,
               icon: Icons.photo_library_outlined,
               isDark: isDark,
               child: Center(
@@ -201,23 +203,23 @@ class _IdentityCardDetailScreenState extends State<IdentityCardDetailScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     if (_isPathValid(currentCard.frontImagePath))
-                      _buildImageThumbnail(currentCard.frontImagePath!, 'Front', isDark),
+                      _buildImageThumbnail(currentCard.frontImagePath!, l.frontLabel, isDark),
                     if (_isPathValid(currentCard.backImagePath))
-                      _buildImageThumbnail(currentCard.backImagePath!, 'Back', isDark),
+                      _buildImageThumbnail(currentCard.backImagePath!, l.backLabel, isDark),
                   ],
                 ),
               ),
             ),
 
           _LiquidGlassDetailSection(
-            title: "Card Details",
+            title: l.cardDetailsTitle,
             icon: Icons.badge_outlined,
             isDark: isDark,
             child: Column(
               children: [
-                _buildDetailRow("Card Type", currentCard.cardType, isDark),
-                _buildDetailRow("Name", currentCard.name, isDark),
-                _buildDetailRow("ID Number", currentCard.value, isDark),
+                _buildDetailRow(l.cardTypeLabel, currentCard.cardType, isDark),
+                _buildDetailRow(l.nameLabel, currentCard.name, isDark),
+                _buildDetailRow(l.idNumberLabel, currentCard.value, isDark),
               ],
             ),
           ),
@@ -324,6 +326,7 @@ class IdentityEditScreenState extends State<IdentityEditScreen> {
   @override
   Widget build(BuildContext context) {
     _isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: const SizedBox.shrink(),
@@ -353,7 +356,7 @@ class IdentityEditScreenState extends State<IdentityEditScreen> {
                 backgroundColor: _isDark ? Colors.white : Colors.black,
                 foregroundColor: _isDark ? Colors.black : Colors.white,
               ),
-              child: const Text("SAVE"),
+              child: Text(l.saveButton),
             ),
           ),
         ],

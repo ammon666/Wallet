@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:wallet/models/card_color_data.dart';
+import 'package:wallet/services/card_utils.dart';
 import '../models/db_helper.dart';
 
 class GlassCreditCard extends StatefulWidget {
@@ -181,7 +182,7 @@ class _NetworkLogo extends StatelessWidget {
       color: Colors.white,
       errorBuilder: (context, error, stackTrace) {
         return Text(
-          (network ?? 'CARD').toUpperCase(),
+          CardUtils.networkDisplayName(network) ?? 'CARD',
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w900,

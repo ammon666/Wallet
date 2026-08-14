@@ -13,6 +13,14 @@ class CardUtils {
       }
     }
 
+    // JCB: starts with 3528-3589
+    if (cleaned.length >= 4) {
+      final prefix4 = int.tryParse(cleaned.substring(0, 4)) ?? 0;
+      if (prefix4 >= 3528 && prefix4 <= 3589) {
+        return 'jcb';
+      }
+    }
+
     // RuPay: starts with 60, 65, 81, 82, or 508
     // Must check before Discover since both can start with 60/65
     if (cleaned.length >= 2) {
@@ -44,6 +52,11 @@ class CardUtils {
       }
     }
 
+    // UnionPay: starts with 62
+    if (cleaned.startsWith('62')) {
+      return 'unionpay';
+    }
+
     // Mastercard: starts with 51-55 or 2221-2720
     if (cleaned.length >= 2) {
       final prefix2 = int.tryParse(cleaned.substring(0, 2)) ?? 0;
@@ -64,5 +77,23 @@ class CardUtils {
     }
 
     return null;
+  }
+
+  /// Display names for each supported card network.
+  /// Brand names (银联, JCB) are kept consistent across locales.
+  static const Map<String, String> networkDisplayNames = {
+    'visa': 'VISA',
+    'mastercard': 'MASTERCARD',
+    'amex': 'AMEX',
+    'discover': 'DISCOVER',
+    'rupay': 'RUPAY',
+    'unionpay': '银联',
+    'jcb': 'JCB',
+  };
+
+  /// Returns the display name for a network key, falling back to uppercase.
+  static String? networkDisplayName(String? network) {
+    if (network == null) return null;
+    return networkDisplayNames[network] ?? network.toUpperCase();
   }
 }

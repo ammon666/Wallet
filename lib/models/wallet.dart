@@ -6,6 +6,7 @@ class Wallet {
   late final String name;
   late final String number;
   late final String expiry;
+  final String? cvv;
   final String? network;
   final String? issuer;
   final Map<String, String>? customFields;
@@ -26,6 +27,7 @@ class Wallet {
     required this.name,
     required this.number,
     required this.expiry,
+    this.cvv,
     this.network,
     this.issuer,
     this.customFields,
@@ -48,6 +50,7 @@ class Wallet {
       'name': name,
       'number': number,
       'expiry': expiry,
+      'cvv': cvv,
       'network': network,
       'issuer': issuer,
       'customFields': customFields != null ? jsonEncode(customFields) : null,
@@ -72,6 +75,7 @@ class Wallet {
       'name': enc.encryptText(name),
       'number': enc.encryptText(number),
       'expiry': enc.encryptText(expiry),
+      'cvv': enc.encryptText(cvv),
       'network': enc.encryptText(network),
       'issuer': enc.encryptText(issuer),
       'customFields': customFields != null
@@ -97,6 +101,7 @@ class Wallet {
       name: map['name'],
       number: map['number'],
       expiry: map['expiry'],
+      cvv: map['cvv'],
       network: map['network'],
       issuer: map['issuer'],
       customFields: map['customFields'] != null
@@ -123,6 +128,7 @@ class Wallet {
       name: enc.decryptText(map['name']) ?? '',
       number: enc.decryptText(map['number']) ?? '',
       expiry: enc.decryptText(map['expiry']) ?? '',
+      cvv: enc.decryptText(map['cvv']),
       network: enc.decryptText(map['network']),
       issuer: enc.decryptText(map['issuer']),
       customFields: map['customFields'] != null

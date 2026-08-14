@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/services/encryption_service.dart';
 import 'package:wallet/services/pkpass_service.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 
 class ShareSecureScreen extends StatefulWidget {
   final Pass? pass;
@@ -35,6 +36,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
   }
 
   void _promptPassword() {
+    final l = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
@@ -45,12 +47,12 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
             backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
-            title: const Text('Set Transfer Password', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: Text(l.setTransferPasswordTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Enter a password to encrypt the transfer. The receiver will need this to import.',
+                  l.setTransferPasswordBody,
                   style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13),
                 ),
                 const SizedBox(height: 16),
@@ -58,7 +60,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
                   controller: controller,
                   obscureText: obscure,
                   decoration: InputDecoration(
-                    labelText: 'Password',
+                    labelText: l.passwordLabel,
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
@@ -72,11 +74,11 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
+                child: Text(l.cancelButton),
               ),
               FilledButton(
                 onPressed: () => _onPasswordSet(controller.text, context),
-                child: const Text('Generate QR'),
+                child: Text(l.generateQrButton),
               ),
             ],
           ),
@@ -88,10 +90,11 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
   static const int _minPasswordLength = 8;
 
   Future<void> _onPasswordSet(String password, BuildContext dialogContext) async {
+    final l = AppLocalizations.of(context)!;
     if (password.length < _minPasswordLength) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Password must be at least $_minPasswordLength characters'),
+          content: Text(l.passwordTooShort(_minPasswordLength)),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -119,6 +122,8 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
     dataMap.remove('stripImagePath');
     dataMap.remove('thumbnailImagePath');
     dataMap.remove('id');
+    // CVV must never leave the device via QR share.
+    dataMap.remove('cvv');
 
     final payload = {'type': shareType, 'data': dataMap};
     final chunks = await EncryptionService.instance.encryptForTransfer(jsonEncode(payload), password);
@@ -134,6 +139,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
@@ -158,7 +164,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text('Share ${shareType == 'pass' ? 'Pass' : 'Card'}'),
+        title: Text(l.sharePassOrCard(shareType == 'pass' ? l.typeLabelPass : l.typeLabelCard)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -210,8 +216,8 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
                       const SizedBox(height: 24),
                       Text(
                         multiChunk
-                            ? 'SCAN ALL ${_encryptedChunks!.length} QR CODES'
-                            : 'SCAN TO IMPORT',
+                            ? l.scanAllQrCodes(_encryptedChunks!.length)
+                            : l.scanToImportLabel,
                         style: const TextStyle(
                           color: Colors.black54,
                           fontWeight: FontWeight.bold,
@@ -249,14 +255,14 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
                           });
                         } catch (_) {
                           await FilePicker.platform.saveFile(
-                            dialogTitle: 'Export Pass',
+                            dialogTitle: l.exportPassDialog,
                             fileName: fileName,
                             bytes: bytes,
                           );
                         }
                       } else {
                         await FilePicker.platform.saveFile(
-                          dialogTitle: 'Export Pass',
+                          dialogTitle: l.exportPassDialog,
                           fileName: fileName,
                           bytes: bytes,
                         );
@@ -264,7 +270,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
                     }
                   },
                   icon: const Icon(Icons.file_download_rounded),
-                  label: const Text('Export as .pkpass'),
+                  label: Text(l.exportPkpass),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: textColor,
                     side: BorderSide(color: textColor.withValues(alpha: 0.2)),
@@ -277,7 +283,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
               Icon(Icons.security_rounded, color: Colors.green.shade400, size: 32),
               const SizedBox(height: 16),
               Text(
-                'Password-Encrypted Transfer',
+                l.passwordEncryptedTransfer,
                 style: TextStyle(
                   color: textColor,
                   fontSize: 16,
@@ -287,8 +293,8 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
               const SizedBox(height: 8),
               Text(
                 hasChunks && multiChunk
-                    ? 'Your data is split across ${_encryptedChunks!.length} QR codes. The receiver must scan all of them and enter the password to decrypt.'
-                    : 'This QR code contains your data encrypted with a password. The receiver must enter the same password to decrypt and import it.',
+                    ? l.shareMultiChunkBody(_encryptedChunks!.length)
+                    : l.shareSingleBody,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: isDark ? Colors.white60 : Colors.black54,
@@ -303,6 +309,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
   }
 
   Widget _buildPasswordPrompt(bool isDark, Color textColor) {
+    final l = AppLocalizations.of(context)!;
     return GestureDetector(
       onTap: _promptPassword,
       child: Container(
@@ -322,7 +329,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
             Icon(Icons.lock_outline_rounded, size: 48, color: textColor.withValues(alpha: 0.4)),
             const SizedBox(height: 16),
             Text(
-              'Tap to Set Password',
+              l.tapToSetPassword,
               style: TextStyle(
                 color: textColor.withValues(alpha: 0.6),
                 fontWeight: FontWeight.bold,
@@ -331,7 +338,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'to generate QR code',
+              l.toGenerateQr,
               style: TextStyle(
                 color: textColor.withValues(alpha: 0.35),
                 fontSize: 12,
@@ -344,6 +351,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
   }
 
   Widget _buildChunkNavigation(Color textColor) {
+    final l = AppLocalizations.of(context)!;
     final total = _encryptedChunks!.length;
     return Column(
       children: [
@@ -406,8 +414,8 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
             await Clipboard.setData(ClipboardData(text: data));
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('QR data copied to clipboard'),
+                SnackBar(
+                  content: Text(l.qrDataCopied),
                   behavior: SnackBarBehavior.floating,
                 ),
               );
@@ -415,7 +423,7 @@ class _ShareSecureScreenState extends State<ShareSecureScreen> {
           },
           icon: Icon(Icons.copy_rounded, size: 16, color: textColor.withValues(alpha: 0.6)),
           label: Text(
-            'Copy chunk data',
+            l.copyChunkData,
             style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12),
           ),
         ),

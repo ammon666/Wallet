@@ -30,7 +30,7 @@ class BackupService {
     return _allowedSettingsKeys.contains(key);
   }
 
-  static Future<String?> createBackup(String password) async {
+  static Future<String?> createBackup(String password, {String? saveDialogTitle}) async {
     try {
       final wallets = await DatabaseHelper.instance.getWallets();
       final passes = await PassDatabaseHelper.instance.getAllPasses();
@@ -112,7 +112,7 @@ class BackupService {
       );
 
       final result = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save Backup File',
+        dialogTitle: saveDialogTitle ?? 'Save Backup File',
         fileName: 'wallet_backup_${DateTime.now().millisecondsSinceEpoch}.wbk',
         bytes: encryptedData,
         type: FileType.custom,

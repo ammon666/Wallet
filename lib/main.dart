@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/theme_provider.dart';
 import 'package:wallet/models/startup_settings_provider.dart';
 import 'package:wallet/services/app_initialization_service.dart';
@@ -85,11 +87,19 @@ class _MyAppState extends State<MyApp> {
           listen: false,
         );
         return MaterialApp(
-          title: 'Wallet',
+          onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
           debugShowCheckedModeBanner: false,
           theme: themeProvider.lightTheme,
           darkTheme: themeProvider.darkTheme,
           themeMode: data.themeMode,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
           home: const SplashScreen(),
         );
       },
@@ -202,7 +212,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (isBiometricSupported && canCheckBiometrics) {
       bool authenticated = await auth.authenticate(
-        localizedReason: 'Authenticate to access your wallet',
+        localizedReason: AppLocalizations.of(context)!.splashAuthReason,
         options: const AuthenticationOptions(stickyAuth: true),
       );
       if (authenticated) {
@@ -279,7 +289,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       children: [
                         Text(
-                          'WALLET',
+                          AppLocalizations.of(context)!.appTitle.toUpperCase(),
                           style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
@@ -289,7 +299,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Secure • Simple • Smart',
+                          AppLocalizations.of(context)!.splashTagline,
                           style: TextStyle(
                             fontSize: 14,
                             color: isDark ? Colors.white54 : Colors.black45,

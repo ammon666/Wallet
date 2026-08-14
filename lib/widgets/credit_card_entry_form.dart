@@ -12,6 +12,7 @@ import 'package:wallet/widgets/color_picker.dart';
 import 'package:wallet/widgets/form_section.dart';
 import 'package:wallet/widgets/glass_credit_card.dart';
 import 'package:wallet/widgets/image_picker_widget.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 
 class CreditCardEntryForm extends StatefulWidget {
   const CreditCardEntryForm({super.key});
@@ -25,6 +26,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   final _nameController = TextEditingController();
   final _numberController = TextEditingController();
   final _expiryController = TextEditingController();
+  final _cvvController = TextEditingController();
   final _issuerController = TextEditingController();
   String _network = "visa";
   String _selectedColor = 'default';
@@ -32,6 +34,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   File? _backImageFile;
   bool _showAdditionalDetails = false;
   bool _isSaving = false;
+  bool _cvvVisible = false;
 
   final _customFieldNameControllers = <TextEditingController>[];
   final _customFieldValueControllers = <TextEditingController>[];
@@ -71,6 +74,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     _nameController.dispose();
     _numberController.dispose();
     _expiryController.dispose();
+    _cvvController.dispose();
     _issuerController.dispose();
     for (var c in _customFieldNameControllers) {
       c.dispose();
@@ -125,6 +129,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
           name: _nameController.text,
           number: _numberController.text,
           expiry: _expiryController.text,
+          cvv: _cvvController.text,
           network: _network,
           issuer: _issuerController.text,
           customFields: customFields.isNotEmpty ? customFields : null,
@@ -163,8 +168,9 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final l = AppLocalizations.of(context)!;
     final previewWallet = Wallet(
-      name: _nameController.text.isEmpty ? "CARD NAME" : _nameController.text,
+      name: _nameController.text.isEmpty ? l.cardNamePlaceholder : _nameController.text,
       number: _numberController.text.padRight(16, '•'),
       expiry: _expiryController.text.padRight(4, '•'),
       network: _network,
@@ -192,14 +198,14 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
               const SizedBox(height: 24),
               TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Card Name'),
-                validator: (v) => v!.isEmpty ? 'Please enter a name' : null,
+                decoration: InputDecoration(labelText: l.cardNameLabel),
+                validator: (v) => v!.isEmpty ? l.validationEnterName : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _numberController,
                 decoration: InputDecoration(
-                  labelText: 'Card Number',
+                  labelText: l.cardNumberLabel,
                   suffixIcon: Consumer<ThemeProvider>(
                     builder: (context, themeProvider, _) {
                       final isDark = themeProvider.isDarkMode;
@@ -233,11 +239,11 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                 ],
                 validator: (v) {
                   if (v == null || v.isEmpty) {
-                    return 'Please enter a card number';
+                    return l.validationEnterCardNumber;
                   }
                   final cleaned = v.replaceAll(RegExp(r'\D'), '');
                   if (cleaned.length < 15 || cleaned.length > 19) {
-                    return 'Card number must be 15-19 digits';
+                    return l.validationCardNumberLength;
                   }
                   return null;
                 },
@@ -245,32 +251,62 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _expiryController,
-                decoration: const InputDecoration(labelText: 'Expiry (MMYY)'),
+                decoration: InputDecoration(labelText: l.expiryLabel),
                 keyboardType: TextInputType.number,
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(4),
                 ],
-                validator: (v) => v!.length != 4 ? 'Must be 4 digits' : null,
+                validator: (v) => v!.length != 4 ? l.validationExpiryLength : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _cvvController,
+                decoration: InputDecoration(
+                  labelText: l.cvvLabel,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _cvvVisible
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                    onPressed: () {
+                      setState(() => _cvvVisible = !_cvvVisible);
+                    },
+                  ),
+                ),
+                keyboardType: TextInputType.number,
+                obscureText: !_cvvVisible,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
+                validator: (v) {
+                  if (v == null || v.isEmpty) return null;
+                  if (v.length < 3 || v.length > 4) {
+                    return l.validationCvvLength;
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _issuerController,
-                decoration: const InputDecoration(
-                  labelText: 'Card Issuer (e.g., HDFC)',
+                decoration: InputDecoration(
+                  labelText: l.cardIssuerLabel,
                 ),
-                validator: (v) => v!.isEmpty ? 'Please enter an issuer' : null,
+                validator: (v) => v!.isEmpty ? l.validationEnterIssuer : null,
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 initialValue: _network,
-                decoration: const InputDecoration(labelText: 'Card Network'),
-                items: ['visa', 'mastercard', 'rupay', 'amex', 'discover'].map((
+                decoration: InputDecoration(labelText: l.cardNetworkLabel),
+                items: ['visa', 'mastercard', 'unionpay', 'amex', 'discover', 'jcb', 'rupay'].map((
                   String value,
                 ) {
                   return DropdownMenuItem<String>(
                     value: value,
-                    child: Text(value.toUpperCase()),
+                    child: Text(CardUtils.networkDisplayName(value)!),
                   );
                 }).toList(),
                 onChanged: (newValue) => setState(() => _network = newValue!),
@@ -282,7 +318,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
               child: TextButton.icon(
                 onPressed: () => setState(() => _showAdditionalDetails = true),
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('Additional Info'),
+                label: Text(l.additionalInfo),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.blue,
                   padding:
@@ -294,14 +330,14 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
             FormSection(
               children: [
                 ImagePickerWidget(
-                  title: 'Front Image',
+                  title: l.frontImage,
                   imageFile: _frontImageFile,
                   onPickImage: () => _pickImage(ImageSource.gallery, true),
                   onRemoveImage: () => setState(() => _frontImageFile = null),
                 ),
                 const SizedBox(height: 16),
                 ImagePickerWidget(
-                  title: 'Back Image',
+                  title: l.backImage,
                   imageFile: _backImageFile,
                   onPickImage: () => _pickImage(ImageSource.gallery, false),
                   onRemoveImage: () => setState(() => _backImageFile = null),
@@ -314,7 +350,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      "CUSTOM FIELDS",
+                      l.customFieldsTitle,
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.2,
@@ -334,7 +370,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                     padding: const EdgeInsets.symmetric(vertical: 24.0),
                     child: Center(
                       child: Text(
-                        "No custom fields added.",
+                        l.noCustomFields,
                         style: themeProvider.getTextStyle(color: Colors.grey),
                       ),
                     ),
@@ -351,8 +387,8 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                           Expanded(
                             child: TextFormField(
                               controller: _customFieldNameControllers[index],
-                              decoration: const InputDecoration(
-                                labelText: 'Field Name',
+                              decoration: InputDecoration(
+                                labelText: l.fieldNameLabel,
                               ),
                             ),
                           ),
@@ -360,8 +396,8 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                           Expanded(
                             child: TextFormField(
                               controller: _customFieldValueControllers[index],
-                              decoration: const InputDecoration(
-                                labelText: 'Value',
+                              decoration: InputDecoration(
+                                labelText: l.fieldValueLabel,
                               ),
                             ),
                           ),
@@ -395,9 +431,9 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                   ? CircularProgressIndicator(
                       color: Theme.of(context).colorScheme.onPrimary,
                     )
-                  : const Text(
-                      'SAVE CARD',
-                      style: TextStyle(
+                  : Text(
+                      l.saveCardButton,
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1,
                       ),

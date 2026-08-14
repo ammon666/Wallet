@@ -11,6 +11,7 @@ import 'package:wallet/widgets/display_barcode_screen.dart';
 import 'package:wallet/widgets/encrypted_image_display.dart';
 import 'package:wallet/widgets/full_screen_image_viewer.dart';
 import 'package:wallet/widgets/barcode_card.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 import 'share_secure_screen.dart';
 
 class BarcodeCardDetailScreen extends StatefulWidget {
@@ -98,6 +99,7 @@ class _BarcodeCardDetailScreenState extends State<BarcodeCardDetailScreen> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = themeProvider.isDarkMode;
     final p = widget.pass;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
@@ -119,7 +121,7 @@ class _BarcodeCardDetailScreenState extends State<BarcodeCardDetailScreen> {
             decoration: BoxDecoration(color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF0F0F0), borderRadius: BorderRadius.circular(12)),
             child: IconButton(
               icon: Icon(Icons.share_rounded, color: isDark ? Colors.white : Colors.black, size: 20),
-              tooltip: 'Share Pass (Encrypted Data)',
+              tooltip: l.sharePassTooltip,
               onPressed: () {
                 HapticFeedback.mediumImpact();
                 Navigator.push(
@@ -202,8 +204,8 @@ class _BarcodeCardDetailScreenState extends State<BarcodeCardDetailScreen> {
                       color: Colors.black,
                       height: 180,
                       width: double.infinity,
-                      errorBuilder: (context, error) => const Center(
-                        child: Text('Invalid Barcode Data', style: TextStyle(color: Colors.red)),
+                      errorBuilder: (context, error) => Center(
+                        child: Text(l.invalidBarcodeData, style: const TextStyle(color: Colors.red)),
                       ),
                     ),
                     if (p.barcodeAltText != null || p.barcodeValue.isNotEmpty) ...[
@@ -231,7 +233,7 @@ class _BarcodeCardDetailScreenState extends State<BarcodeCardDetailScreen> {
               _isPathValid(p.stripImagePath) ||
               _isPathValid(p.thumbnailImagePath))
             _LiquidGlassSection(
-              title: "Pass Images",
+              title: l.passImagesTitle,
               icon: Icons.photo_library_outlined,
               isDark: isDark,
               child: SingleChildScrollView(
@@ -242,22 +244,22 @@ class _BarcodeCardDetailScreenState extends State<BarcodeCardDetailScreen> {
                     if (_isPathValid(p.frontImagePath))
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: _buildImageThumbnail(p.frontImagePath!, 'Front', isDark),
+                        child: _buildImageThumbnail(p.frontImagePath!, l.frontLabel, isDark),
                       ),
                     if (_isPathValid(p.backImagePath))
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: _buildImageThumbnail(p.backImagePath!, 'Back', isDark),
+                        child: _buildImageThumbnail(p.backImagePath!, l.backLabel, isDark),
                       ),
                     if (_isPathValid(p.stripImagePath))
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: _buildImageThumbnail(p.stripImagePath!, 'Strip', isDark),
+                        child: _buildImageThumbnail(p.stripImagePath!, l.stripLabel, isDark),
                       ),
                     if (_isPathValid(p.thumbnailImagePath))
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: _buildImageThumbnail(p.thumbnailImagePath!, 'Thumbnail', isDark),
+                        child: _buildImageThumbnail(p.thumbnailImagePath!, l.thumbnailLabel, isDark),
                       ),
                   ],
                 ),
@@ -265,22 +267,22 @@ class _BarcodeCardDetailScreenState extends State<BarcodeCardDetailScreen> {
             ),
 
           if (p.description != null && p.description!.isNotEmpty)
-            _buildInfoSection("Description", p.description!, isDark),
+            _buildInfoSection(l.descriptionLabel, p.description!, isDark),
 
           const SizedBox(height: 24),
 
           // Fields Sections - Structured by Pass Type
           if (p.fields != null) ...[
-            if (p.fields!['primaryFields'] != null) 
-              _buildFieldsSection(_getSectionTitle(p.type, 'primary'), p.fields!['primaryFields'], isDark, Icons.star_outline_rounded),
-            if (p.fields!['secondaryFields'] != null) 
-              _buildFieldsSection(_getSectionTitle(p.type, 'secondary'), p.fields!['secondaryFields'], isDark, Icons.info_outline_rounded),
-            if (p.fields!['auxiliaryFields'] != null) 
-              _buildFieldsSection(_getSectionTitle(p.type, 'auxiliary'), p.fields!['auxiliaryFields'], isDark, Icons.grid_view_rounded),
-            if (p.fields!['headerFields'] != null) 
-              _buildFieldsSection("Header Details", p.fields!['headerFields'], isDark, Icons.list_alt_rounded),
-            if (p.fields!['backFields'] != null) 
-              _buildFieldsSection("Additional Info", p.fields!['backFields'], isDark, Icons.more_horiz_rounded),
+            if (p.fields!['primaryFields'] != null)
+              _buildFieldsSection(_getSectionTitle(l, p.type, 'primary'), p.fields!['primaryFields'], isDark, Icons.star_outline_rounded),
+            if (p.fields!['secondaryFields'] != null)
+              _buildFieldsSection(_getSectionTitle(l, p.type, 'secondary'), p.fields!['secondaryFields'], isDark, Icons.info_outline_rounded),
+            if (p.fields!['auxiliaryFields'] != null)
+              _buildFieldsSection(_getSectionTitle(l, p.type, 'auxiliary'), p.fields!['auxiliaryFields'], isDark, Icons.grid_view_rounded),
+            if (p.fields!['headerFields'] != null)
+              _buildFieldsSection(l.sectionHeaderDetails, p.fields!['headerFields'], isDark, Icons.list_alt_rounded),
+            if (p.fields!['backFields'] != null)
+              _buildFieldsSection(l.sectionAdditionalInfo, p.fields!['backFields'], isDark, Icons.more_horiz_rounded),
           ],
 
           const SizedBox(height: 32),
@@ -291,83 +293,83 @@ class _BarcodeCardDetailScreenState extends State<BarcodeCardDetailScreen> {
     );
   }
 
-  String _getSectionTitle(String passType, String fieldType) {
+  String _getSectionTitle(AppLocalizations l, String passType, String fieldType) {
     switch (passType) {
       case 'boardingPass':
-        if (fieldType == 'primary') return "Flight Details";
-        if (fieldType == 'secondary') return "Passenger Info";
-        return "Travel Info";
+        if (fieldType == 'primary') return l.sectionFlightDetails;
+        if (fieldType == 'secondary') return l.sectionPassengerInfo;
+        return l.sectionTravelInfo;
       case 'eventTicket':
-        if (fieldType == 'primary') return "Event Details";
-        if (fieldType == 'secondary') return "Venue Info";
-        return "Ticket Details";
+        if (fieldType == 'primary') return l.sectionEventDetails;
+        if (fieldType == 'secondary') return l.sectionVenueInfo;
+        return l.sectionTicketDetails;
       case 'loyaltyCard':
       case 'storeCard':
-        if (fieldType == 'primary') return "Member Info";
-        if (fieldType == 'secondary') return "Account Details";
-        return "Rewards Info";
+        if (fieldType == 'primary') return l.sectionMemberInfo;
+        if (fieldType == 'secondary') return l.sectionAccountDetails;
+        return l.sectionRewardsInfo;
       case 'giftCard':
-        if (fieldType == 'primary') return "Card Info";
-        if (fieldType == 'secondary') return "Balance & PIN";
-        return "Gift Details";
+        if (fieldType == 'primary') return l.sectionCardInfo;
+        if (fieldType == 'secondary') return l.sectionBalancePin;
+        return l.sectionGiftDetails;
       case 'offer':
-        if (fieldType == 'primary') return "Offer Details";
-        if (fieldType == 'secondary') return "Provider Info";
-        return "Terms";
+        if (fieldType == 'primary') return l.sectionOfferDetails;
+        if (fieldType == 'secondary') return l.sectionProviderInfo;
+        return l.sectionTerms;
       case 'coupon':
-        if (fieldType == 'primary') return "Offer Details";
-        return "Coupon Info";
+        if (fieldType == 'primary') return l.sectionOfferDetails;
+        return l.sectionCouponInfo;
       case 'transitPass':
-        if (fieldType == 'primary') return "Route Details";
-        if (fieldType == 'secondary') return "Trip Info";
-        return "Fare Details";
+        if (fieldType == 'primary') return l.sectionRouteDetails;
+        if (fieldType == 'secondary') return l.sectionTripInfo;
+        return l.sectionFareDetails;
       case 'digitalCarKey':
-        if (fieldType == 'primary') return "Vehicle Info";
-        if (fieldType == 'secondary') return "Key Details";
-        return "Access Info";
+        if (fieldType == 'primary') return l.sectionVehicleInfo;
+        if (fieldType == 'secondary') return l.sectionKeyDetails;
+        return l.sectionAccessInfo;
       case 'campusId':
-        if (fieldType == 'primary') return "Student Info";
-        if (fieldType == 'secondary') return "University Details";
-        return "Access Info";
+        if (fieldType == 'primary') return l.sectionStudentInfo;
+        if (fieldType == 'secondary') return l.sectionUniversityDetails;
+        return l.sectionAccessInfo;
       case 'corporateBadge':
-        if (fieldType == 'primary') return "Employee Info";
-        if (fieldType == 'secondary') return "Company Details";
-        return "Access Info";
+        if (fieldType == 'primary') return l.sectionEmployeeInfo;
+        if (fieldType == 'secondary') return l.sectionCompanyDetails;
+        return l.sectionAccessInfo;
       case 'hotelKey':
-        if (fieldType == 'primary') return "Guest Info";
-        if (fieldType == 'secondary') return "Hotel Details";
-        return "Stay Details";
+        if (fieldType == 'primary') return l.sectionGuestInfo;
+        if (fieldType == 'secondary') return l.sectionHotelDetails;
+        return l.sectionStayDetails;
       case 'multiFamilyKey':
-        if (fieldType == 'primary') return "Resident Info";
-        if (fieldType == 'secondary') return "Property Details";
-        return "Access Info";
+        if (fieldType == 'primary') return l.sectionResidentInfo;
+        if (fieldType == 'secondary') return l.sectionPropertyDetails;
+        return l.sectionAccessInfo;
       case 'healthInsuranceCard':
-        if (fieldType == 'primary') return "Member Info";
-        if (fieldType == 'secondary') return "Policy Details";
-        return "Coverage Info";
+        if (fieldType == 'primary') return l.sectionMemberInfo;
+        if (fieldType == 'secondary') return l.sectionPolicyDetails;
+        return l.sectionCoverageInfo;
       case 'healthTestRecord':
-        if (fieldType == 'primary') return "Test Info";
-        if (fieldType == 'secondary') return "Results";
-        return "Lab Details";
+        if (fieldType == 'primary') return l.sectionTestInfo;
+        if (fieldType == 'secondary') return l.sectionResults;
+        return l.sectionLabDetails;
       case 'healthVaccineCard':
-        if (fieldType == 'primary') return "Vaccine Info";
-        if (fieldType == 'secondary') return "Dose Details";
-        return "Manufacturer Info";
+        if (fieldType == 'primary') return l.sectionVaccineInfo;
+        if (fieldType == 'secondary') return l.sectionDoseDetails;
+        return l.sectionManufacturerInfo;
       case 'digitalCredential':
-        if (fieldType == 'primary') return "Document Info";
-        if (fieldType == 'secondary') return "Issuer Details";
-        return "Verification";
+        if (fieldType == 'primary') return l.sectionDocumentInfo;
+        if (fieldType == 'secondary') return l.sectionIssuerDetails;
+        return l.sectionVerification;
       case 'genericPrivate':
-        if (fieldType == 'primary') return "Organization";
-        if (fieldType == 'secondary') return "Data Details";
-        return "Additional Info";
+        if (fieldType == 'primary') return l.sectionOrganization;
+        if (fieldType == 'secondary') return l.sectionDataDetails;
+        return l.sectionAdditionalInfo;
       case 'inStorePayment':
-        if (fieldType == 'primary') return "Card Info";
-        if (fieldType == 'secondary') return "Account Details";
-        return "Payment Info";
+        if (fieldType == 'primary') return l.sectionCardInfo;
+        if (fieldType == 'secondary') return l.sectionAccountDetails;
+        return l.sectionPaymentInfo;
       default:
-        if (fieldType == 'primary') return "Card Details";
-        return "Information";
+        if (fieldType == 'primary') return l.sectionCardDetails;
+        return l.sectionInformation;
     }
   }
 
@@ -437,6 +439,7 @@ class PassEditScreenState extends State<PassEditScreen> {
   @override
   Widget build(BuildContext context) {
     _isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: const SizedBox.shrink(),
@@ -466,7 +469,7 @@ class PassEditScreenState extends State<PassEditScreen> {
                 backgroundColor: _isDark ? Colors.white : Colors.black,
                 foregroundColor: _isDark ? Colors.black : Colors.white,
               ),
-              child: const Text("SAVE"),
+              child: Text(l.saveButton),
             ),
           ),
         ],

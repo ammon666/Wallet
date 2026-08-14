@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:wallet/models/identity_card.dart';
 import 'package:wallet/models/card_color_data.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 
 class IdentityCardWidget extends StatelessWidget {
   final IdentityCard card;
@@ -14,6 +15,7 @@ class IdentityCardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorKey = card.color ?? (isDark ? '#0F0F0F' : '#1E293B');
     final colorData = CardColorData.fromHexOrKey(colorKey, isDark: isDark);
@@ -97,9 +99,9 @@ class IdentityCardWidget extends StatelessWidget {
                       const Spacer(),
                       
                       // Cardholder Name
-                      const Text(
-                        'NAME',
-                        style: TextStyle(
+                      Text(
+                        l.idNamePlaceholder,
+                        style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1,
@@ -127,9 +129,9 @@ class IdentityCardWidget extends StatelessWidget {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'DOCUMENT NUMBER',
-                                style: TextStyle(
+                              Text(
+                                l.idDocumentNumberPlaceholder,
+                                style: const TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 1,

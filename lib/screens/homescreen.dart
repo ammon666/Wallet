@@ -23,6 +23,7 @@ import '../pages/walletdetails.dart';
 import 'package:wallet/widgets/identity_card_widget.dart';
 import 'package:wallet/screens/identity_card_details_screen.dart';
 import 'package:wallet/services/auto_backup_service.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 
 /// Smooth route builder — used across the app for premium transitions
 class SmoothPageRoute<T> extends PageRouteBuilder<T> {
@@ -142,6 +143,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _scanAndImport() async {
+    final l = AppLocalizations.of(context)!;
     try {
       final scanResult = await BarcodeScanner.scan();
       if (scanResult.type != ResultType.Barcode) return;
@@ -160,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (decryptedJson == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invalid or corrupted sharing code.')),
+            SnackBar(content: Text(l.invalidShareCode)),
           );
         }
         return;
@@ -173,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (type == null || data == null || !_isValidImportType(type)) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invalid sharing code format.')),
+            SnackBar(content: Text(l.invalidShareFormat)),
           );
         }
         return;
@@ -181,52 +183,52 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (type == 'pass') {
         if (!_isValidPassData(data)) {
-          _showImportError('Invalid pass data.');
+          _showImportError(l.invalidPassData);
           return;
         }
         final newPass = Pass.fromMap(data);
         if (mounted) {
-          final confirm = await _showImportConfirmation(newPass.organizationName, 'Pass');
+          final confirm = await _showImportConfirmation(newPass.organizationName, l.typeLabelPass);
           if (confirm == true) {
             await PassDatabaseHelper.instance.insertPass(newPass);
             AutoBackupService.triggerBackup();
             if (mounted) {
               context.read<PassProvider>().fetchPasses();
-              _showSuccessSnackBar('Pass imported successfully!');
+              _showSuccessSnackBar(l.passImportedSuccess);
             }
           }
         }
       } else if (type == 'wallet') {
         if (!_isValidWalletData(data)) {
-          _showImportError('Invalid card data.');
+          _showImportError(l.invalidCardData);
           return;
         }
         final newWallet = Wallet.fromMap(data);
         if (mounted) {
-          final confirm = await _showImportConfirmation(newWallet.name, 'Payment Card');
+          final confirm = await _showImportConfirmation(newWallet.name, l.typeLabelPaymentCard);
           if (confirm == true) {
             await DatabaseHelper.instance.insertWallet(newWallet);
             AutoBackupService.triggerBackup();
             if (mounted) {
               context.read<WalletProvider>().fetchWallets();
-              _showSuccessSnackBar('Payment card imported successfully!');
+              _showSuccessSnackBar(l.paymentCardImportedSuccess);
             }
           }
         }
       } else if (type == 'identity') {
         if (!_isValidIdentityData(data)) {
-          _showImportError('Invalid identity data.');
+          _showImportError(l.invalidIdentityData);
           return;
         }
         final newIdentity = IdentityCard.fromMap(data);
         if (mounted) {
-          final confirm = await _showImportConfirmation(newIdentity.name, 'Identity Card');
+          final confirm = await _showImportConfirmation(newIdentity.name, l.typeLabelIdentityCard);
           if (confirm == true) {
             await IdentityDatabaseHelper.instance.insertIdentity(newIdentity);
             AutoBackupService.triggerBackup();
             if (mounted) {
               context.read<IdentityProvider>().fetchIdentities();
-              _showSuccessSnackBar('Identity card imported successfully!');
+              _showSuccessSnackBar(l.identityCardImportedSuccess);
             }
           }
         }
@@ -234,17 +236,18 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to import. The sharing code may be corrupted.')),
+          SnackBar(content: Text(l.importFailedCorrupted)),
         );
       }
     }
   }
 
   void _handleChunkScan(String rawData) {
+    final l = AppLocalizations.of(context)!;
     try {
       final parts = rawData.split(':');
       if (parts.length != 6) {
-        _showImportError('Invalid chunk format.');
+        _showImportError(l.invalidChunkFormat);
         return;
       }
 
@@ -252,14 +255,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final totalChunks = int.parse(parts[2]);
 
       if (chunkIndex < 0 || chunkIndex >= totalChunks) {
-        _showImportError('Invalid chunk index.');
+        _showImportError(l.invalidChunkIndex);
         return;
       }
 
       if (_transferChunks.isEmpty) {
         _expectedTotalChunks = totalChunks;
       } else if (_expectedTotalChunks != totalChunks) {
-        _showImportError('Chunk mismatch. Please restart scanning.');
+        _showImportError(l.chunkMismatch);
         _transferChunks.clear();
         _expectedTotalChunks = 0;
         return;
@@ -273,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Scanned chunk ${_transferChunks.length} of $totalChunks'),
+            content: Text(l.scannedChunk(_transferChunks.length, totalChunks)),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 1),
           ),
@@ -284,12 +287,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _promptTransferPassword();
       }
     } catch (_) {
-      _showImportError('Failed to parse chunk.');
+      _showImportError(l.failedParseChunk);
     }
   }
 
   void _promptTransferPassword() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -299,12 +303,12 @@ class _HomeScreenState extends State<HomeScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
             backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
-            title: const Text('Enter Transfer Password', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: Text(l.enterTransferPasswordTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Enter the password that was used to encrypt this transfer.',
+                  l.enterTransferPasswordBody,
                   style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13),
                 ),
                 const SizedBox(height: 16),
@@ -312,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: controller,
                   obscureText: obscure,
                   decoration: InputDecoration(
-                    labelText: 'Password',
+                    labelText: l.passwordLabel,
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
@@ -330,11 +334,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   _expectedTotalChunks = 0;
                   Navigator.pop(ctx);
                 },
-                child: const Text('Cancel'),
+                child: Text(l.cancelButton),
               ),
               FilledButton(
                 onPressed: () => _decryptAndImportChunks(ctx, controller.text),
-                child: const Text('Import'),
+                child: Text(l.importButton),
               ),
             ],
           ),
@@ -347,6 +351,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (password.isEmpty) return;
     Navigator.pop(ctx);
 
+    final l = AppLocalizations.of(context)!;
     try {
       final joinedData = _transferChunks.join('\n');
       _transferChunks.clear();
@@ -355,7 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final decryptedJson = await EncryptionService.instance.decryptFromTransfer(joinedData, password: password);
 
       if (decryptedJson == null) {
-        _showImportError('Decryption failed. Wrong password or corrupted data.');
+        _showImportError(l.decryptFailed);
         return;
       }
 
@@ -364,64 +369,64 @@ class _HomeScreenState extends State<HomeScreen> {
       final data = payload['data'] as Map<String, dynamic>?;
 
       if (type == null || data == null || !_isValidImportType(type)) {
-        _showImportError('Invalid sharing code format.');
+        _showImportError(l.invalidShareFormat);
         return;
       }
 
       if (type == 'pass') {
         if (!_isValidPassData(data)) {
-          _showImportError('Invalid pass data.');
+          _showImportError(l.invalidPassData);
           return;
         }
         final newPass = Pass.fromMap(data);
         if (mounted) {
-          final confirm = await _showImportConfirmation(newPass.organizationName, 'Pass');
+          final confirm = await _showImportConfirmation(newPass.organizationName, l.typeLabelPass);
           if (confirm == true) {
             await PassDatabaseHelper.instance.insertPass(newPass);
             AutoBackupService.triggerBackup();
             if (mounted) {
               context.read<PassProvider>().fetchPasses();
-              _showSuccessSnackBar('Pass imported successfully!');
+              _showSuccessSnackBar(l.passImportedSuccess);
             }
           }
         }
       } else if (type == 'wallet') {
         if (!_isValidWalletData(data)) {
-          _showImportError('Invalid card data.');
+          _showImportError(l.invalidCardData);
           return;
         }
         final newWallet = Wallet.fromMap(data);
         if (mounted) {
-          final confirm = await _showImportConfirmation(newWallet.name, 'Payment Card');
+          final confirm = await _showImportConfirmation(newWallet.name, l.typeLabelPaymentCard);
           if (confirm == true) {
             await DatabaseHelper.instance.insertWallet(newWallet);
             AutoBackupService.triggerBackup();
             if (mounted) {
               context.read<WalletProvider>().fetchWallets();
-              _showSuccessSnackBar('Payment card imported successfully!');
+              _showSuccessSnackBar(l.paymentCardImportedSuccess);
             }
           }
         }
       } else if (type == 'identity') {
         if (!_isValidIdentityData(data)) {
-          _showImportError('Invalid identity data.');
+          _showImportError(l.invalidIdentityData);
           return;
         }
         final newIdentity = IdentityCard.fromMap(data);
         if (mounted) {
-          final confirm = await _showImportConfirmation(newIdentity.name, 'Identity Card');
+          final confirm = await _showImportConfirmation(newIdentity.name, l.typeLabelIdentityCard);
           if (confirm == true) {
             await IdentityDatabaseHelper.instance.insertIdentity(newIdentity);
             AutoBackupService.triggerBackup();
             if (mounted) {
               context.read<IdentityProvider>().fetchIdentities();
-              _showSuccessSnackBar('Identity card imported successfully!');
+              _showSuccessSnackBar(l.identityCardImportedSuccess);
             }
           }
         }
       }
     } catch (_) {
-      _showImportError('Failed to import. Wrong password or corrupted data.');
+      _showImportError(l.importFailedWrongPassword);
     }
   }
 
@@ -468,20 +473,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<bool?> _showImportConfirmation(String name, String typeLabel) {
+    final l = AppLocalizations.of(context)!;
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF0A0A0A) : Colors.white,
-        title: Text('Import Shared $typeLabel'),
-        content: Text('Do you want to import "$name"?'),
+        title: Text(l.importSharedTitle(typeLabel)),
+        content: Text(l.importSharedBody(name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(l.cancelButton),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Import'),
+            child: Text(l.importButton),
           ),
         ],
       ),
@@ -504,6 +510,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
 
     showDialog(
       context: context,
@@ -512,13 +519,13 @@ class _HomeScreenState extends State<HomeScreen> {
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
           title: Text(
-            'Delete Pass?',
+            l.deletePassTitle,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
           content: Text(
-            'Are you sure you want to delete "$name"? This action cannot be undone.',
+            l.deleteConfirmBody(name),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: isDark ? Colors.white70 : Colors.black87,
             ),
@@ -527,7 +534,7 @@ class _HomeScreenState extends State<HomeScreen> {
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
               child: Text(
-                'Cancel',
+                l.cancelButton,
                 style: TextStyle(
                   color: isDark ? Colors.white60 : Colors.black54,
                 ),
@@ -543,9 +550,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.of(ctx).pop();
                 ScaffoldMessenger.of(
                   context,
-                ).showSnackBar(const SnackBar(content: Text('Pass Deleted!')));
+                ).showSnackBar(SnackBar(content: Text(l.passDeleted)));
               },
-              child: const Text('Delete'),
+              child: Text(l.deleteButton),
             ),
           ],
         );
@@ -558,6 +565,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final startupProvider = Provider.of<StartupSettingsProvider>(context);
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
 
     // Force index to 0 (Payments) if hidden mode is on
     final isHiddenMode = startupProvider.paymentsOnlyMode;
@@ -592,7 +600,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: IconButton(
               icon: Icon(Icons.qr_code_scanner_rounded, color: isDark ? Colors.white : Colors.black),
-              tooltip: 'Scan to Import',
+              tooltip: l.scanToImport,
               onPressed: () {
                 HapticFeedback.mediumImpact();
                 _scanAndImport();
@@ -685,21 +693,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 onDestinationSelected: _onItemTapped,
                 animationDuration: Duration.zero,
                 elevation: 0,
-                destinations: const <Widget>[
+                destinations: <Widget>[
                   NavigationDestination(
-                    icon: Icon(Icons.credit_card_outlined),
-                    selectedIcon: Icon(Icons.credit_card),
-                    label: 'Payments',
+                    icon: const Icon(Icons.credit_card_outlined),
+                    selectedIcon: const Icon(Icons.credit_card),
+                    label: l.navPayments,
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.confirmation_number_outlined),
-                    selectedIcon: Icon(Icons.confirmation_number),
-                    label: 'Passes',
+                    icon: const Icon(Icons.confirmation_number_outlined),
+                    selectedIcon: const Icon(Icons.confirmation_number),
+                    label: l.navPasses,
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.badge_outlined),
-                    selectedIcon: Icon(Icons.badge),
-                    label: 'Identity',
+                    icon: const Icon(Icons.badge_outlined),
+                    selectedIcon: const Icon(Icons.badge),
+                    label: l.navIdentity,
                   ),
                 ],
               ),
@@ -739,6 +747,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildPaymentsTab(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
 
     return Consumer<WalletProvider>(
       builder: (context, provider, child) {
@@ -746,7 +755,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (wallets.isEmpty) {
           return _buildEmptyState(
             context,
-            "No credit or debit cards yet.\nTap the '+' to add one.",
+            l.emptyPayments,
           );
         }
 
@@ -804,7 +813,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      hintText: 'Search cards...',
+                      hintText: l.searchCards,
                       hintStyle: TextStyle(
                         color: isDark ? Colors.white38 : Colors.black38,
                       ),
@@ -832,22 +841,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment<String>(value: 'all', label: Text('ALL')),
-                      ButtonSegment<String>(value: 'visa', label: Text('VISA')),
+                    segments: [
+                      ButtonSegment<String>(value: 'all', label: Text(l.filterAll)),
+                      ButtonSegment<String>(value: 'visa', label: const Text('VISA')),
                       ButtonSegment<String>(
                         value: 'mastercard',
-                        label: Text('MASTERCARD'),
+                        label: const Text('MASTERCARD'),
                       ),
                       ButtonSegment<String>(
                         value: 'rupay',
-                        label: Text('RUPAY'),
+                        label: const Text('RUPAY'),
                       ),
-                      ButtonSegment<String>(value: 'amex', label: Text('AMEX')),
+                      ButtonSegment<String>(value: 'amex', label: const Text('AMEX')),
                       ButtonSegment<String>(
                         value: 'discover',
-                        label: Text('DISCOVER'),
+                        label: const Text('DISCOVER'),
                       ),
+                      ButtonSegment<String>(
+                        value: 'unionpay',
+                        label: const Text('银联'),
+                      ),
+                      ButtonSegment<String>(value: 'jcb', label: const Text('JCB')),
                     ],
                     showSelectedIcon: false,
                     selected: <String>{_selectedFilter},
@@ -866,15 +880,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(48.0),
                   child: Center(
-                    child: Text(
-                      'No cards found.',
-                      style: TextStyle(
-                        color: isDark ? Colors.white54 : Colors.black45,
+                        child: Text(
+                          l.noCardsFound,
+                          style: TextStyle(
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              )
+                  )
             else
               SliverReorderableList(
                 itemCount: filteredWallets.length,
@@ -916,7 +930,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 backgroundColor: Colors.transparent,
                                 foregroundColor: Colors.blue,
                                 icon: Icons.edit_outlined,
-                                label: 'Edit',
+                                label: l.actionEdit,
                               ),
                             ],
                           ),
@@ -930,8 +944,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ClipboardService.instance.copy(wallet.number);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      content: const Text(
-                                        'Card number copied!',
+                                      content: Text(
+                                        l.cardNumberCopied,
                                       ),
                                       behavior: SnackBarBehavior.floating,
                                       shape: RoundedRectangleBorder(
@@ -944,7 +958,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 backgroundColor: Colors.transparent,
                                 foregroundColor: Colors.blue,
                                 icon: Icons.copy_rounded,
-                                label: 'Copy',
+                                label: l.actionCopy,
                               ),
                               SlidableAction(
                                 onPressed: (ctx) async {
@@ -956,7 +970,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 backgroundColor: Colors.transparent,
                                 foregroundColor: Colors.red,
                                 icon: Icons.delete_outline_rounded,
-                                label: 'Delete',
+                                label: l.actionDelete,
                               ),
                             ],
                           ),
@@ -993,6 +1007,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildPassesTab(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
 
     return Consumer<PassProvider>(
       builder: (context, provider, child) {
@@ -1000,7 +1015,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (passes.isEmpty) {
           return _buildEmptyState(
             context,
-            "No passes added yet.\nTap the '+' to add one.",
+            l.emptyPasses,
           );
         }
 
@@ -1036,7 +1051,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      hintText: 'Search passes...',
+                      hintText: l.searchPasses,
                       hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       suffixIcon: _searchQuery.isNotEmpty
@@ -1059,19 +1074,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment<String>(value: 'all', label: Text('ALL')),
-                      ButtonSegment<String>(value: 'loyaltyCard', label: Text('LOYALTY')),
-                      ButtonSegment<String>(value: 'giftCard', label: Text('GIFT CARDS')),
-                      ButtonSegment<String>(value: 'offer', label: Text('OFFERS')),
-                      ButtonSegment<String>(value: 'boardingPass', label: Text('BOARDING')),
-                      ButtonSegment<String>(value: 'eventTicket', label: Text('EVENTS')),
-                      ButtonSegment<String>(value: 'transitPass', label: Text('TRANSIT')),
-                      ButtonSegment<String>(value: 'healthInsuranceCard', label: Text('HEALTH')),
-                      ButtonSegment<String>(value: 'campusId', label: Text('CAMPUS')),
-                      ButtonSegment<String>(value: 'corporateBadge', label: Text('CORPORATE')),
-                      ButtonSegment<String>(value: 'hotelKey', label: Text('HOTEL')),
-                      ButtonSegment<String>(value: 'generic', label: Text('OTHER')),
+                    segments: [
+                      ButtonSegment<String>(value: 'all', label: Text(l.filterAll)),
+                      ButtonSegment<String>(value: 'loyaltyCard', label: Text(l.filterLoyalty)),
+                      ButtonSegment<String>(value: 'giftCard', label: Text(l.filterGiftCards)),
+                      ButtonSegment<String>(value: 'offer', label: Text(l.filterOffers)),
+                      ButtonSegment<String>(value: 'boardingPass', label: Text(l.filterBoarding)),
+                      ButtonSegment<String>(value: 'eventTicket', label: Text(l.filterEvents)),
+                      ButtonSegment<String>(value: 'transitPass', label: Text(l.filterTransit)),
+                      ButtonSegment<String>(value: 'healthInsuranceCard', label: Text(l.filterHealth)),
+                      ButtonSegment<String>(value: 'campusId', label: Text(l.filterCampus)),
+                      ButtonSegment<String>(value: 'corporateBadge', label: Text(l.filterCorporate)),
+                      ButtonSegment<String>(value: 'hotelKey', label: Text(l.filterHotel)),
+                      ButtonSegment<String>(value: 'generic', label: Text(l.filterOther)),
                     ],
                     showSelectedIcon: false,
                     selected: <String>{_selectedPassFilter},
@@ -1090,13 +1105,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(48.0),
                   child: Center(
-                    child: Text(
-                      'No passes found.',
-                      style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
+                        child: Text(
+                          l.noPassesFound,
+                          style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              )
+                  )
             else
               SliverReorderableList(
               itemCount: filteredPasses.length,
@@ -1134,7 +1149,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             backgroundColor: Colors.transparent,
                             foregroundColor: Colors.blue,
                             icon: Icons.edit_outlined,
-                            label: 'Edit',
+                            label: l.actionEdit,
                           ),
                         ],
                       ),
@@ -1148,7 +1163,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ClipboardService.instance.copy(pass.barcodeValue);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: const Text('Pass data copied!'),
+                                  content: Text(l.passDataCopied),
                                   behavior: SnackBarBehavior.floating,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -1160,7 +1175,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             backgroundColor: Colors.transparent,
                             foregroundColor: Colors.blue,
                             icon: Icons.copy_rounded,
-                            label: 'Copy',
+                            label: l.actionCopy,
                           ),
                           SlidableAction(
                             onPressed: (context) => _showPassDeleteConfirmationDialog(
@@ -1170,7 +1185,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             backgroundColor: Colors.transparent,
                             foregroundColor: Colors.red,
                             icon: Icons.delete_outline_rounded,
-                            label: 'Delete',
+                            label: l.actionDelete,
                           ),
                         ],
                       ),
@@ -1205,6 +1220,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
 
     showDialog(
       context: context,
@@ -1213,13 +1229,13 @@ class _HomeScreenState extends State<HomeScreen> {
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
           title: Text(
-            'Delete Identity Card?',
+            l.deleteIdentityTitle,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
           content: Text(
-            'Are you sure you want to delete "$name"? This action cannot be undone.',
+            l.deleteConfirmBody(name),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: isDark ? Colors.white70 : Colors.black87,
             ),
@@ -1228,7 +1244,7 @@ class _HomeScreenState extends State<HomeScreen> {
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
               child: Text(
-                'Cancel',
+                l.cancelButton,
                 style: TextStyle(
                   color: isDark ? Colors.white60 : Colors.black54,
                 ),
@@ -1244,9 +1260,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.of(ctx).pop();
                 ScaffoldMessenger.of(
                   context,
-                ).showSnackBar(const SnackBar(content: Text('Identity Card Deleted!')));
+                ).showSnackBar(SnackBar(content: Text(l.identityDeleted)));
               },
-              child: const Text('Delete'),
+              child: Text(l.deleteButton),
             ),
           ],
         );
@@ -1257,6 +1273,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildIdentitiesTab(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
 
     return Consumer<IdentityProvider>(
       builder: (context, provider, child) {
@@ -1264,7 +1281,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (identities.isEmpty) {
           return _buildEmptyState(
             context,
-            "No identity cards yet.\nTap the '+' to add one.",
+            l.emptyIdentities,
           );
         }
 
@@ -1293,7 +1310,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      hintText: 'Search identities...',
+                      hintText: l.searchIdentities,
                       hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       suffixIcon: _searchQuery.isNotEmpty
@@ -1309,16 +1326,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            
+
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
-            
+
             if (filteredIdentities.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(48.0),
                   child: Center(
                     child: Text(
-                      'No identity cards found.',
+                      l.noIdentitiesFound,
                       style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
                     ),
                   ),
@@ -1361,7 +1378,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             backgroundColor: Colors.transparent,
                             foregroundColor: Colors.blue,
                             icon: Icons.edit_outlined,
-                            label: 'Edit',
+                            label: l.actionEdit,
                           ),
                         ],
                       ),
@@ -1375,7 +1392,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ClipboardService.instance.copy(card.value);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: const Text('ID value copied!'),
+                                  content: Text(l.idValueCopied),
                                   behavior: SnackBarBehavior.floating,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -1387,7 +1404,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             backgroundColor: Colors.transparent,
                             foregroundColor: Colors.blue,
                             icon: Icons.copy_rounded,
-                            label: 'Copy',
+                            label: l.actionCopy,
                           ),
                           SlidableAction(
                             onPressed: (context) => _showIdentityDeleteConfirmationDialog(
@@ -1397,7 +1414,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             backgroundColor: Colors.transparent,
                             foregroundColor: Colors.red,
                             icon: Icons.delete_outline_rounded,
-                            label: 'Delete',
+                            label: l.actionDelete,
                           ),
                         ],
                       ),

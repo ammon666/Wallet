@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/services/clipboard_service.dart';
 import 'package:provider/provider.dart';
 import 'package:barcode_widget/barcode_widget.dart';
@@ -55,6 +56,7 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
     final isDark = themeProvider.isDarkMode;
     final bgColor = isDark ? const Color(0xFF0A0A0A) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -69,7 +71,7 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
               child: Center(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: _buildBarcodeCard(isDark),
+                  child: _buildBarcodeCard(isDark, l),
                 ),
               ),
             ),
@@ -83,6 +85,7 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
   }
 
   Widget _buildHeader(BuildContext context, bool isDark, Color textColor) {
+    final l = AppLocalizations.of(context)!;
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Row(
@@ -119,7 +122,7 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  "Show this to cashier",
+                  l.showToCashier,
                   style: TextStyle(
                     fontSize: 13,
                     color: isDark ? Colors.white54 : Colors.black45,
@@ -139,7 +142,7 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  content: const Text('Copied to clipboard'),
+                  content: Text(l.copiedToClipboard),
                   duration: const Duration(seconds: 2),
                 ),
               );
@@ -161,7 +164,7 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
     );
   }
 
-  Widget _buildBarcodeCard(bool isDark) {
+  Widget _buildBarcodeCard(bool isDark, AppLocalizations l) {
     final format = _formats[_selectedIndex];
     // Check if it's a 2D/Square-ish barcode
     final is2D = format.name == 'QR Code' || 
@@ -199,7 +202,7 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
               data: widget.barcodeData,
               color: Colors.black,
               height: is2D ? 200 : 80,
-              errorBuilder: (context, error) => _buildError(),
+              errorBuilder: (context, error) => _buildError(l),
             ),
           ),
 
@@ -227,7 +230,7 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
     );
   }
 
-  Widget _buildError() {
+  Widget _buildError(AppLocalizations l) {
     return Container(
       height: 100,
       alignment: Alignment.center,
@@ -241,7 +244,7 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Cannot display in this format',
+            l.cannotDisplayFormat,
             style: TextStyle(color: Colors.red.shade400, fontSize: 13),
           ),
         ],

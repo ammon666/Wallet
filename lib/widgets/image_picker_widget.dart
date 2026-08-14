@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 
 class ImagePickerWidget extends StatelessWidget {
   final String title;
@@ -17,6 +18,7 @@ class ImagePickerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -35,7 +37,7 @@ class ImagePickerWidget extends StatelessWidget {
           child: imageFile == null
               ? OutlinedButton.icon(
                   icon: const Icon(Icons.add_photo_alternate_outlined),
-                  label: const Text("Select Image"),
+                  label: Text(l.selectImage),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(200, 50),
                     side: BorderSide(

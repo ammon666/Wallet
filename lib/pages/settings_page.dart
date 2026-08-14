@@ -14,6 +14,7 @@ import 'package:wallet/models/provider_helper.dart';
 import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/models/auto_backup_provider.dart';
 import 'package:wallet/services/saf_service.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -35,33 +36,34 @@ class _SettingsPageState extends State<SettingsPage> {
     final auth = LocalAuthentication();
     final isDeviceSupported = await auth.isDeviceSupported();
     if (!isDeviceSupported) return true;
+    final l = AppLocalizations.of(context)!;
     return await auth.authenticate(
-      localizedReason: 'Authenticate to perform this action',
+      localizedReason: l.authenticateAction,
       options: const AuthenticationOptions(stickyAuth: true),
     );
   }
 
-  String _getThemeDisplayName(ThemePreference preference) {
+  String _getThemeDisplayName(ThemePreference preference, AppLocalizations l) {
     switch (preference) {
       case ThemePreference.light:
-        return 'Light';
+        return l.themeLight;
       case ThemePreference.dark:
-        return 'Dark';
+        return l.themeDark;
       case ThemePreference.system:
-        return 'Follow System';
+        return l.themeSystem;
     }
   }
 
-  String _getDefaultScreenName(int index) {
+  String _getDefaultScreenName(int index, AppLocalizations l) {
     switch (index) {
       case 0:
-        return 'Payments';
+        return l.navPayments;
       case 1:
-        return 'Passes';
+        return l.navPasses;
       case 2:
-        return 'Identity';
+        return l.navIdentity;
       default:
-        return 'Payments';
+        return l.navPayments;
     }
   }
 
@@ -71,10 +73,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final startupProvider = Provider.of<StartupSettingsProvider>(context);
     final autoBackupProvider = Provider.of<AutoBackupProvider>(context);
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(l.settingsTitle),
         leading: Container(
           margin: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -97,13 +100,13 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildSponsorshipBanner(context, isDark),
           const SizedBox(height: 16),
           _LiquidGlassSection(
-            title: 'Startup & Layout',
+            title: l.sectionStartupLayout,
             icon: Icons.rocket_launch_outlined,
             children: [
               _LiquidGlassTile(
                 icon: Icons.shield_outlined,
-                title: 'Authentication Screen',
-                subtitle: 'Require biometrics when app starts',
+                title: l.authScreenTitle,
+                subtitle: l.authScreenSubtitle,
                 trailing: Switch(
                   value: startupProvider.showAuthenticationScreen,
                   onChanged: (_) {
@@ -119,7 +122,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               _LiquidGlassTile(
                 icon: Icons.payments_outlined,
-                title: 'Currency',
+                title: l.currencyTitle,
                 subtitle:
                     '${startupProvider.selectedCurrencyCode} (${startupProvider.selectedCurrencySymbol})',
                 onTap: () => _showCurrencyDialog(context, startupProvider),
@@ -133,9 +136,10 @@ class _SettingsPageState extends State<SettingsPage> {
               if (!startupProvider.paymentsOnlyMode) ...[
                 _LiquidGlassTile(
                   icon: Icons.home_filled,
-                  title: 'Default Screen',
+                  title: l.defaultScreenTitle,
                   subtitle: _getDefaultScreenName(
                     startupProvider.defaultScreenIndex,
+                    l,
                   ),
                   onTap: () =>
                       _showDefaultScreenDialog(context, startupProvider),
@@ -149,8 +153,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
               _LiquidGlassTile(
                 icon: Icons.credit_card_rounded,
-                title: 'Payments Only Mode',
-                subtitle: 'Hide Passes and Identity screen',
+                title: l.paymentsOnlyTitle,
+                subtitle: l.paymentsOnlySubtitle,
                 trailing: Switch(
                   value: startupProvider.paymentsOnlyMode,
                   onChanged: (_) {
@@ -162,13 +166,13 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
 
           _LiquidGlassSection(
-            title: 'Appearance',
+            title: l.sectionAppearance,
             icon: Icons.palette_outlined,
             children: [
               _LiquidGlassTile(
                 icon: Icons.brightness_6_outlined,
-                title: 'App Theme',
-                subtitle: _getThemeDisplayName(themeProvider.themePreference),
+                title: l.appThemeTitle,
+                subtitle: _getThemeDisplayName(themeProvider.themePreference, l),
                 onTap: () => _showThemeDialog(context, themeProvider),
               ),
               Divider(
@@ -179,8 +183,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               _LiquidGlassTile(
                 icon: Icons.font_download_outlined,
-                title: 'Use System Font',
-                subtitle: 'Use the default system font',
+                title: l.useSystemFontTitle,
+                subtitle: l.useSystemFontSubtitle,
                 trailing: Switch(
                   value: themeProvider.useSystemFont,
                   onChanged: (_) => themeProvider.toggleFont(),
@@ -190,13 +194,13 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
 
           _LiquidGlassSection(
-            title: 'Data Management',
+            title: l.sectionDataManagement,
             icon: Icons.storage_outlined,
             children: [
               _LiquidGlassTile(
                 icon: Icons.sync_rounded,
-                title: 'Auto Backup',
-                subtitle: _getAutoBackupSubtitle(autoBackupProvider),
+                title: l.autoBackupTitle,
+                subtitle: _getAutoBackupSubtitle(autoBackupProvider, l),
                 trailing: Switch(
                   value: autoBackupProvider.isEnabled,
                   onChanged: (value) async {
@@ -217,8 +221,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 _LiquidGlassTile(
                   icon: Icons.folder_outlined,
-                  title: 'Backup Location',
-                  subtitle: _getShortPath(autoBackupProvider.backupPath),
+                  title: l.backupLocationTitle,
+                  subtitle: _getShortPath(autoBackupProvider.backupPath, l),
                   onTap: () => _pickAutoBackupPath(autoBackupProvider),
                 ),
                 Divider(
@@ -229,8 +233,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 _LiquidGlassTile(
                   icon: Icons.lock_outline_rounded,
-                  title: 'Change Backup Password',
-                  subtitle: 'Update the auto backup encryption password',
+                  title: l.changeBackupPasswordTitle,
+                  subtitle: l.changeBackupPasswordSubtitle,
                   onTap: () =>
                       _showChangeAutoBackupPasswordDialog(autoBackupProvider),
                 ),
@@ -243,8 +247,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               _LiquidGlassTile(
                 icon: Icons.backup_outlined,
-                title: 'Create Backup',
-                subtitle: 'Save an encrypted copy of your data',
+                title: l.createBackupTitle,
+                subtitle: l.createBackupSubtitle,
                 onTap: () => _showBackupDialog(themeProvider),
               ),
               Divider(
@@ -255,8 +259,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               _LiquidGlassTile(
                 icon: Icons.restore_outlined,
-                title: 'Restore from Backup',
-                subtitle: 'Replace current data from a backup file',
+                title: l.restoreBackupTitle,
+                subtitle: l.restoreBackupSubtitle,
                 onTap: () => _showRestoreDialog(themeProvider),
               ),
               Divider(
@@ -267,8 +271,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               _LiquidGlassTile(
                 icon: Icons.delete_forever_outlined,
-                title: 'Delete All Data',
-                subtitle: 'Permanently erase all data from this device',
+                title: l.deleteAllDataTitle,
+                subtitle: l.deleteAllDataSubtitle,
                 onTap: () => _showDeleteAllDataDialog(themeProvider),
               ),
               Divider(
@@ -279,22 +283,21 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               _LiquidGlassTile(
                 icon: Icons.info_outline_rounded,
-                title: 'Trademark Notice',
-                subtitle:
-                    'Card network logos are trademarks of their respective owners.',
+                title: l.trademarkNoticeTitle,
+                subtitle: l.trademarkNoticeSubtitle,
                 onTap: () => _showTrademarkNotice(isDark),
               ),
             ],
           ),
 
           _LiquidGlassSection(
-            title: 'About',
+            title: l.sectionAbout,
             icon: Icons.info_outline_rounded,
             children: [
               _LiquidGlassTile(
                 icon: Icons.bug_report_outlined,
-                title: 'Report Error',
-                subtitle: 'Found a bug? Let us know on GitHub.',
+                title: l.reportErrorTitle,
+                subtitle: l.reportErrorSubtitle,
                 onTap: () async {
                   HapticFeedback.mediumImpact();
                   const url = 'https://github.com/sidhant947/Wallet/issues';
@@ -315,25 +318,22 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _showTrademarkNotice(bool isDark) {
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
-        title: const Text(
-          'Trademark Fair Use Notice',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.trademarkDialogTitle,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const SingleChildScrollView(
-          child: Text(
-            'The Visa, Mastercard, RuPay, American Express, and Discover logos displayed in this application are registered trademarks of their respective owners.\n\n'
-            'These logos are used solely for identifying the card network. This usage constitutes nominative fair use.\n\n'
-            'This application is not affiliated with, endorsed by, or sponsored by any of these companies.',
-          ),
+        content: SingleChildScrollView(
+          child: Text(l.trademarkDialogBody),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
+            child: Text(l.closeButton),
           ),
         ],
       ),
@@ -348,13 +348,14 @@ class _SettingsPageState extends State<SettingsPage> {
       context,
       listen: false,
     ).isDarkMode;
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
-        title: const Text(
-          'Choose Currency',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.chooseCurrency,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         content: SizedBox(
           width: double.maxFinite,
@@ -389,26 +390,27 @@ class _SettingsPageState extends State<SettingsPage> {
       context,
       listen: false,
     ).isDarkMode;
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
-        title: const Text(
-          'Default Screen',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.chooseDefaultScreen,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildRadioOption('Payments', 0, provider.defaultScreenIndex, (v) {
+            _buildRadioOption(l.navPayments, 0, provider.defaultScreenIndex, (v) {
               provider.setDefaultScreen(v);
               Navigator.pop(context);
             }, isDark),
-            _buildRadioOption('Passes', 1, provider.defaultScreenIndex, (v) {
+            _buildRadioOption(l.navPasses, 1, provider.defaultScreenIndex, (v) {
               provider.setDefaultScreen(v);
               Navigator.pop(context);
             }, isDark),
-            _buildRadioOption('Identity', 2, provider.defaultScreenIndex, (v) {
+            _buildRadioOption(l.navIdentity, 2, provider.defaultScreenIndex, (v) {
               provider.setDefaultScreen(v);
               Navigator.pop(context);
             }, isDark),
@@ -437,20 +439,21 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showThemeDialog(BuildContext context, ThemeProvider themeProvider) {
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
-        title: const Text(
-          'Choose Theme',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.chooseTheme,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: ThemePreference.values
               .map(
                 (p) => RadioListTile<ThemePreference>(
-                  title: Text(_getThemeDisplayName(p)),
+                  title: Text(_getThemeDisplayName(p, l)),
                   value: p,
                   groupValue: themeProvider.themePreference,
                   onChanged: (v) {
@@ -467,15 +470,15 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  String _getAutoBackupSubtitle(AutoBackupProvider provider) {
-    if (!provider.isEnabled) return 'Automatically backup on changes';
+  String _getAutoBackupSubtitle(AutoBackupProvider provider, AppLocalizations l) {
+    if (!provider.isEnabled) return l.autoBackupSubtitleOff;
     final path = provider.displayPath;
-    if (path.isEmpty) return 'Configure backup location';
-    return 'Active - ${_getShortPath(path)}';
+    if (path.isEmpty) return l.autoBackupSubtitleNoPath;
+    return l.autoBackupSubtitleActive(_getShortPath(path, l));
   }
 
-  String _getShortPath(String path) {
-    if (path.isEmpty) return 'Not set';
+  String _getShortPath(String path, AppLocalizations l) {
+    if (path.isEmpty) return l.pathNotSet;
     final parts = path.split('/');
     if (parts.length <= 3) return path;
     return '.../${parts.sublist(parts.length - 2).join('/')}';
@@ -488,6 +491,7 @@ class _SettingsPageState extends State<SettingsPage> {
       context,
       listen: false,
     ).isDarkMode;
+    final l = AppLocalizations.of(context)!;
     final pathController = TextEditingController();
     final passwordController = TextEditingController();
     bool obscure = true;
@@ -497,9 +501,9 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
-          title: const Text(
-            'Enable Auto Backup',
-            style: TextStyle(fontWeight: FontWeight.bold),
+          title: Text(
+            l.enableAutoBackupTitle,
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           content: SingleChildScrollView(
             child: Column(
@@ -507,7 +511,7 @@ class _SettingsPageState extends State<SettingsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'A backup will be created automatically whenever you add or remove cards, passes, or identity cards.',
+                  l.enableAutoBackupBody,
                   style: TextStyle(
                     color: isDark ? Colors.white70 : Colors.black87,
                     fontSize: 13,
@@ -515,7 +519,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Backup Location',
+                  l.backupLocationTitle,
                   style: TextStyle(
                     color: isDark ? Colors.white : Colors.black,
                     fontWeight: FontWeight.w500,
@@ -556,7 +560,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         Expanded(
                           child: Text(
                             pathController.text.isEmpty
-                                ? 'Select directory...'
+                                ? l.selectDirectoryHint
                                 : pathController.text,
                             style: TextStyle(
                               color: pathController.text.isEmpty
@@ -573,7 +577,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Backup Password',
+                  l.backupPasswordLabel,
                   style: TextStyle(
                     color: isDark ? Colors.white : Colors.black,
                     fontWeight: FontWeight.w500,
@@ -588,7 +592,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     color: isDark ? Colors.white : Colors.black,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Enter password',
+                    hintText: l.enterPasswordHint,
                     suffixIcon: IconButton(
                       icon: Icon(
                         obscure ? Icons.visibility : Icons.visibility_off,
@@ -605,7 +609,7 @@ class _SettingsPageState extends State<SettingsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(l.cancelButton),
             ),
             FilledButton(
               onPressed: () async {
@@ -621,7 +625,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 _pendingBackupUri = null;
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
               },
-              child: const Text('Enable'),
+              child: Text(l.enableButton),
             ),
           ],
         ),
@@ -646,15 +650,16 @@ class _SettingsPageState extends State<SettingsPage> {
       context,
       listen: false,
     ).isDarkMode;
+    final l = AppLocalizations.of(context)!;
     final passwordController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
-        title: const Text(
-          'Change Backup Password',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          l.changeBackupPasswordTitle,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         content: TextField(
           controller: passwordController,
@@ -662,14 +667,14 @@ class _SettingsPageState extends State<SettingsPage> {
           style: TextStyle(
             color: isDark ? Colors.white : Colors.black,
           ),
-          decoration: const InputDecoration(
-            hintText: 'Enter new password (min 8 characters)',
+          decoration: InputDecoration(
+            hintText: l.enterNewPasswordHint,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(l.cancelButton),
           ),
           FilledButton(
             onPressed: () async {
@@ -677,7 +682,7 @@ class _SettingsPageState extends State<SettingsPage> {
               await provider.setBackupPassword(passwordController.text);
               if (dialogContext.mounted) Navigator.pop(dialogContext);
             },
-            child: const Text('Save'),
+            child: Text(l.saveButtonText),
           ),
         ],
       ),
@@ -688,16 +693,17 @@ class _SettingsPageState extends State<SettingsPage> {
     final authenticated = await _authenticateForDestructiveAction();
     if (!authenticated || !mounted) return;
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (dialogContext) => _LiquidGlassPasswordDialog(
-        title: 'Create Backup',
-        content: 'Enter a strong password to encrypt your backup file.',
-        buttonText: 'Create Backup',
+        title: l.createBackupTitle,
+        content: l.createBackupDialogBody,
+        buttonText: l.createBackupButton,
         isDark: isDark,
         onConfirm: (password) async {
           try {
-            await BackupService.createBackup(password);
+            await BackupService.createBackup(password, saveDialogTitle: l.saveBackupDialogTitle);
             if (!mounted) return;
             if (dialogContext.mounted) {
               Navigator.pop(dialogContext);
@@ -717,13 +723,13 @@ class _SettingsPageState extends State<SettingsPage> {
     final authenticated = await _authenticateForDestructiveAction();
     if (!authenticated || !mounted) return;
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (dialogContext) => _LiquidGlassPasswordDialog(
-        title: 'Restore Backup',
-        content:
-            'Enter the password for the backup file. This will replace all current data.',
-        buttonText: 'Restore',
+        title: l.restoreBackupTitle,
+        content: l.restoreBackupDialogBody,
+        buttonText: l.restoreButton,
         isDestructive: true,
         isDark: isDark,
         validatePassword: false,
@@ -766,18 +772,17 @@ class _SettingsPageState extends State<SettingsPage> {
     final authenticated = await _authenticateForDestructiveAction();
     if (!authenticated || !mounted) return;
     final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
-        title: const Text('Delete All Data?'),
-        content: const Text(
-          'This will permanently delete all wallets, passes, and images.',
-        ),
+        title: Text(l.deleteAllDataTitle),
+        content: Text(l.deleteAllDataBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(l.cancelButton),
           ),
           FilledButton(
             onPressed: () async {
@@ -785,7 +790,7 @@ class _SettingsPageState extends State<SettingsPage> {
               if (ctx.mounted) Navigator.pop(ctx);
             },
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete Everything'),
+            child: Text(l.deleteEverythingButton),
           ),
         ],
       ),
@@ -875,18 +880,21 @@ class _SettingsPageState extends State<SettingsPage> {
       walletProvider.fetchWallets();
       passProvider.fetchPasses();
       identityProvider.fetchIdentities();
+      final l = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('All data deleted.')));
+      ).showSnackBar(SnackBar(content: Text(l.allDataDeleted)));
     } catch (_) {
       if (!mounted) return;
+      final l = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Delete failed. Please try again.')));
+      ).showSnackBar(SnackBar(content: Text(l.deleteFailedRetry)));
     }
   }
 
   Widget _buildSponsorshipBanner(BuildContext context, bool isDark) {
+    final l = AppLocalizations.of(context)!;
     return GestureDetector(
       onTap: () async {
         HapticFeedback.mediumImpact();
@@ -915,7 +923,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Buy Me a Coffee',
+                l.buyMeACoffee,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -1095,9 +1103,10 @@ class _LiquidGlassPasswordDialogState
 
   void _validateAndConfirm() {
     final password = _passwordController.text;
+    final l = AppLocalizations.of(context)!;
     if (widget.validatePassword && password.length < _minPasswordLength) {
       setState(() {
-        _passwordError = 'Password must be at least $_minPasswordLength characters';
+        _passwordError = l.passwordTooShort(_minPasswordLength);
       });
       return;
     }
@@ -1112,6 +1121,7 @@ class _LiquidGlassPasswordDialogState
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return AlertDialog(
       backgroundColor: widget.isDark ? const Color(0xFF0A0A0A) : Colors.white,
       title: Text(
@@ -1143,7 +1153,7 @@ class _LiquidGlassPasswordDialogState
               }
             },
             decoration: InputDecoration(
-              labelText: 'Password',
+              labelText: l.passwordLabel,
               errorText: _passwordError,
               suffixIcon: IconButton(
                 icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
@@ -1156,7 +1166,7 @@ class _LiquidGlassPasswordDialogState
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l.cancelButton),
         ),
         FilledButton(
           onPressed: _isLoading ? null : _validateAndConfirm,

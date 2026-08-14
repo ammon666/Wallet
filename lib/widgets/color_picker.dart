@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/theme_provider.dart';
 
 class ColorPicker extends StatelessWidget {
@@ -45,6 +46,7 @@ class ColorPicker extends StatelessWidget {
   }
 
   void _openCustomColorDialog(BuildContext context, Color currentColor) {
+    final l = AppLocalizations.of(context)!;
     Color tempColor = currentColor;
     final controller = TextEditingController(text: _formatHex(currentColor));
 
@@ -54,7 +56,7 @@ class ColorPicker extends StatelessWidget {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Custom Color'),
+              title: Text(l.customColorTitle),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -82,10 +84,10 @@ class ColorPicker extends StatelessWidget {
                     const SizedBox(height: 16),
                     TextField(
                       controller: controller,
-                      decoration: const InputDecoration(
-                        labelText: 'Hex Color Code',
+                      decoration: InputDecoration(
+                        labelText: l.hexColorCodeLabel,
                         hintText: '#FF5733',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
                       ),
                       onChanged: (val) {
                         final parsed = _parseHex(val);
@@ -141,14 +143,14 @@ class ColorPicker extends StatelessWidget {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel'),
+                  child: Text(l.cancelButton),
                 ),
                 FilledButton(
                   onPressed: () {
                     onColorSelected(_formatHex(tempColor));
                     Navigator.pop(ctx);
                   },
-                  child: const Text('Apply'),
+                  child: Text(l.applyButton),
                 ),
               ],
             );
@@ -160,6 +162,7 @@ class ColorPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = themeProvider.isDarkMode;
     final textColor = isDark ? Colors.white : Colors.black;
@@ -175,7 +178,7 @@ class ColorPicker extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(left: 4.0, bottom: 16.0),
           child: Text(
-            'CARD COLOR',
+            l.cardColorLabel,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: textColor.withValues(alpha: 0.5),
               fontWeight: FontWeight.bold,

@@ -4,6 +4,7 @@ import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/services/barcode_utils.dart';
 import 'package:wallet/models/pass_types.dart';
 import 'package:wallet/widgets/encrypted_image_display.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 
 class BarcodeCard extends StatelessWidget {
   final Pass pass;
@@ -117,6 +118,7 @@ class _GoogleWalletBaseLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final mutedColor = textColor.withValues(alpha: 0.6);
@@ -193,7 +195,7 @@ class _GoogleWalletBaseLayout extends StatelessWidget {
                 // Barcode Section
                 if (pass.barcodeValue.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  _buildBarcodeSection(textColor, mutedColor),
+                  _buildBarcodeSection(textColor, mutedColor, l),
                 ],
               ],
             ),
@@ -234,7 +236,7 @@ class _GoogleWalletBaseLayout extends StatelessWidget {
     );
   }
 
-  Widget _buildBarcodeSection(Color textColor, Color mutedColor) {
+  Widget _buildBarcodeSection(Color textColor, Color mutedColor, AppLocalizations l) {
     return Column(
       children: [
         Container(
@@ -251,7 +253,7 @@ class _GoogleWalletBaseLayout extends StatelessWidget {
             width: double.infinity,
             errorBuilder: (context, error) => Center(
               child: Text(
-                'Invalid Barcode',
+                l.invalidBarcode,
                 style: TextStyle(color: Colors.red.shade700, fontSize: 10),
               ),
             ),
@@ -479,6 +481,7 @@ class _GenericPassLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final details = _getFieldValue(pass.fields, 'DETAILS');
@@ -489,9 +492,9 @@ class _GenericPassLayout extends StatelessWidget {
       onTap: onTap,
       fieldRows: [
         if (details.isNotEmpty)
-          _GWSingleRow(label: 'Details', value: details, textColor: textColor),
+          _GWSingleRow(label: l.fieldDetails, value: details, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Date', startValue: date,
+          startLabel: l.fieldDate, startValue: date,
           endLabel: '', endValue: '',
           textColor: textColor,
         ),
@@ -510,6 +513,7 @@ class _LoyaltyCardLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final memberName = _getFieldValue(pass.fields, 'MEMBER NAME');
@@ -522,14 +526,14 @@ class _LoyaltyCardLayout extends StatelessWidget {
       pass: pass,
       onTap: onTap,
       fieldRows: [
-        _GWSingleRow(label: 'Member Name', value: memberName, textColor: textColor),
+        _GWSingleRow(label: l.fieldMemberName, value: memberName, textColor: textColor),
         _GWThreeItemRow(
-          startLabel: 'Balance', startValue: balance,
-          middleLabel: 'Points', middleValue: points,
-          endLabel: 'Tier', endValue: tier,
+          startLabel: l.fieldBalance, startValue: balance,
+          middleLabel: l.fieldPoints, middleValue: points,
+          endLabel: l.fieldTier, endValue: tier,
           textColor: textColor,
         ),
-        _GWSingleRow(label: 'Account #', value: accountNum, textColor: textColor),
+        _GWSingleRow(label: l.fieldAccountNo, value: accountNum, textColor: textColor),
       ],
     );
   }
@@ -545,6 +549,7 @@ class _GiftCardLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final cardNumber = _getFieldValue(pass.fields, 'CARD NUMBER');
@@ -556,11 +561,11 @@ class _GiftCardLayout extends StatelessWidget {
       pass: pass,
       onTap: onTap,
       fieldRows: [
-        _GWSingleRow(label: 'Card Number', value: cardNumber, textColor: textColor),
+        _GWSingleRow(label: l.fieldCardNumber, value: cardNumber, textColor: textColor),
         _GWThreeItemRow(
-          startLabel: 'Balance', startValue: balance,
-          middleLabel: 'PIN', middleValue: pin,
-          endLabel: 'Recipient', endValue: recipient,
+          startLabel: l.fieldBalance, startValue: balance,
+          middleLabel: l.fieldPin, middleValue: pin,
+          endLabel: l.fieldRecipient, endValue: recipient,
           textColor: textColor,
         ),
       ],
@@ -578,6 +583,7 @@ class _OfferLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final offerTitle = _getFieldValue(pass.fields, 'OFFER');
@@ -591,14 +597,14 @@ class _OfferLayout extends StatelessWidget {
       titleIcon: Icons.local_offer_rounded,
       fieldRows: [
         if (offerTitle.isNotEmpty)
-          _GWSingleRow(label: 'Offer', value: offerTitle, textColor: textColor),
+          _GWSingleRow(label: l.fieldOffer, value: offerTitle, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Provider', startValue: provider,
-          endLabel: 'Expires', endValue: expires,
+          startLabel: l.fieldProvider, startValue: provider,
+          endLabel: l.fieldExpires, endValue: expires,
           textColor: textColor,
         ),
         if (code.isNotEmpty)
-          _GWSingleRow(label: 'Code', value: code, textColor: textColor),
+          _GWSingleRow(label: l.fieldCode, value: code, textColor: textColor),
       ],
     );
   }
@@ -614,6 +620,7 @@ class _BoardingPassLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final from = _getFieldValue(pass.fields, 'FROM');
@@ -638,7 +645,7 @@ class _BoardingPassLayout extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('FROM', style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                    Text(l.fieldFrom.toUpperCase(), style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
                     const SizedBox(height: 2),
                     Text(from.isEmpty ? '---' : from, style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w900)),
                   ],
@@ -649,7 +656,7 @@ class _BoardingPassLayout extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('TO', style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                    Text(l.fieldTo.toUpperCase(), style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
                     const SizedBox(height: 2),
                     Text(to.isEmpty ? '---' : to, style: TextStyle(color: textColor, fontSize: 28, fontWeight: FontWeight.w900)),
                   ],
@@ -659,14 +666,14 @@ class _BoardingPassLayout extends StatelessWidget {
           ),
         ),
         _GWThreeItemRow(
-          startLabel: 'Flight', startValue: flight,
-          middleLabel: 'Gate', middleValue: gate,
-          endLabel: 'Seat', endValue: seat,
+          startLabel: l.fieldFlight, startValue: flight,
+          middleLabel: l.fieldGate, middleValue: gate,
+          endLabel: l.fieldSeat, endValue: seat,
           textColor: textColor,
         ),
         _GWTwoItemRow(
-          startLabel: 'Departure', startValue: departure,
-          endLabel: 'Arrival', endValue: arrival,
+          startLabel: l.fieldDeparture, startValue: departure,
+          endLabel: l.fieldArrival, endValue: arrival,
           textColor: textColor,
         ),
       ],
@@ -684,6 +691,7 @@ class _EventTicketLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final event = _getFieldValue(pass.fields, 'EVENT');
@@ -700,20 +708,20 @@ class _EventTicketLayout extends StatelessWidget {
       titleIcon: Icons.confirmation_number_rounded,
       fieldRows: [
         if (event.isNotEmpty)
-          _GWSingleRow(label: 'Event', value: event, textColor: textColor),
+          _GWSingleRow(label: l.fieldEvent, value: event, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Venue', startValue: venue,
-          endLabel: 'Date', endValue: date,
+          startLabel: l.fieldVenue, startValue: venue,
+          endLabel: l.fieldDate, endValue: date,
           textColor: textColor,
         ),
         _GWThreeItemRow(
-          startLabel: 'Section', startValue: section,
-          middleLabel: 'Row', middleValue: row,
-          endLabel: 'Seat', endValue: seat,
+          startLabel: l.fieldSection, startValue: section,
+          middleLabel: l.fieldRow, middleValue: row,
+          endLabel: l.fieldSeat, endValue: seat,
           textColor: textColor,
         ),
         if (time.isNotEmpty)
-          _GWSingleRow(label: 'Time', value: time, textColor: textColor),
+          _GWSingleRow(label: l.fieldTime, value: time, textColor: textColor),
       ],
     );
   }
@@ -729,6 +737,7 @@ class _TransitPassLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final from = _getFieldValue(pass.fields, 'FROM');
@@ -761,7 +770,7 @@ class _TransitPassLayout extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('FROM', style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                    Text(l.fieldFrom.toUpperCase(), style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
                     const SizedBox(height: 2),
                     Text(from.isEmpty ? '---' : from, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.w900)),
                   ],
@@ -772,7 +781,7 @@ class _TransitPassLayout extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('TO', style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                    Text(l.fieldTo.toUpperCase(), style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
                     const SizedBox(height: 2),
                     Text(to.isEmpty ? '---' : to, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.w900)),
                   ],
@@ -782,14 +791,14 @@ class _TransitPassLayout extends StatelessWidget {
           ),
         ),
         _GWThreeItemRow(
-          startLabel: 'Route', startValue: route,
-          middleLabel: 'Fare', middleValue: fareClass,
-          endLabel: 'Platform', endValue: platform,
+          startLabel: l.fieldRoute, startValue: route,
+          middleLabel: l.fieldFare, middleValue: fareClass,
+          endLabel: l.fieldPlatform, endValue: platform,
           textColor: textColor,
         ),
         _GWTwoItemRow(
-          startLabel: 'Seat', startValue: seat,
-          endLabel: 'Coach', endValue: coach,
+          startLabel: l.fieldSeat, startValue: seat,
+          endLabel: l.fieldCoach, endValue: coach,
           textColor: textColor,
         ),
       ],
@@ -807,6 +816,7 @@ class _HealthInsuranceLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final memberName = _getFieldValue(pass.fields, 'MEMBER NAME');
@@ -820,15 +830,15 @@ class _HealthInsuranceLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.health_and_safety_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Member Name', value: memberName, textColor: textColor),
+        _GWSingleRow(label: l.fieldMemberName, value: memberName, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Provider', startValue: provider,
-          endLabel: 'Policy #', endValue: policyNumber,
+          startLabel: l.fieldProvider, startValue: provider,
+          endLabel: l.fieldPolicyNo, endValue: policyNumber,
           textColor: textColor,
         ),
         _GWThreeItemRow(
-          startLabel: 'Group #', startValue: groupNumber,
-          middleLabel: 'PCN', middleValue: pcn,
+          startLabel: l.fieldGroupNo, startValue: groupNumber,
+          middleLabel: l.fieldPcn, middleValue: pcn,
           endLabel: '', endValue: '',
           textColor: textColor,
         ),
@@ -847,6 +857,7 @@ class _HealthTestLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final testType = _getFieldValue(pass.fields, 'TEST TYPE');
@@ -860,15 +871,15 @@ class _HealthTestLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.science_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Test Type', value: testType, textColor: textColor),
+        _GWSingleRow(label: l.fieldTestType, value: testType, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Result', startValue: result,
-          endLabel: 'Date', endValue: date,
+          startLabel: l.fieldResult, startValue: result,
+          endLabel: l.fieldDate, endValue: date,
           textColor: textColor,
         ),
         _GWTwoItemRow(
-          startLabel: 'Lab', startValue: lab,
-          endLabel: 'Provider', endValue: provider,
+          startLabel: l.fieldLab, startValue: lab,
+          endLabel: l.fieldProvider, endValue: provider,
           textColor: textColor,
         ),
       ],
@@ -886,6 +897,7 @@ class _VaccineCardLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final vaccine = _getFieldValue(pass.fields, 'VACCINE');
@@ -899,15 +911,15 @@ class _VaccineCardLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.vaccines_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Vaccine', value: vaccine, textColor: textColor),
+        _GWSingleRow(label: l.fieldVaccine, value: vaccine, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Dose', startValue: dose,
-          endLabel: 'Date', endValue: date,
+          startLabel: l.fieldDose, startValue: dose,
+          endLabel: l.fieldDate, endValue: date,
           textColor: textColor,
         ),
         _GWTwoItemRow(
-          startLabel: 'Manufacturer', startValue: manufacturer,
-          endLabel: 'Lot #', endValue: lotNumber,
+          startLabel: l.fieldManufacturer, startValue: manufacturer,
+          endLabel: l.fieldLotNo, endValue: lotNumber,
           textColor: textColor,
         ),
       ],
@@ -925,6 +937,7 @@ class _CarKeyLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final vehicle = _getFieldValue(pass.fields, 'VEHICLE');
@@ -937,13 +950,13 @@ class _CarKeyLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.directions_car_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Vehicle', value: vehicle, textColor: textColor),
+        _GWSingleRow(label: l.fieldVehicle, value: vehicle, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Key Status', startValue: keyStatus,
-          endLabel: 'VIN', endValue: vin,
+          startLabel: l.fieldKeyStatus, startValue: keyStatus,
+          endLabel: l.fieldVin, endValue: vin,
           textColor: textColor,
         ),
-        _GWSingleRow(label: 'Device', value: device, textColor: textColor),
+        _GWSingleRow(label: l.fieldDevice, value: device, textColor: textColor),
       ],
     );
   }
@@ -959,6 +972,7 @@ class _CampusIdLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final studentName = _getFieldValue(pass.fields, 'STUDENT NAME');
@@ -972,15 +986,15 @@ class _CampusIdLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.school_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Student Name', value: studentName, textColor: textColor),
+        _GWSingleRow(label: l.fieldStudentName, value: studentName, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'University', startValue: university.isNotEmpty ? university : pass.organizationName,
-          endLabel: 'ID #', endValue: idNumber,
+          startLabel: l.fieldUniversity, startValue: university.isNotEmpty ? university : pass.organizationName,
+          endLabel: l.fieldIdNo, endValue: idNumber,
           textColor: textColor,
         ),
         _GWTwoItemRow(
-          startLabel: 'Year', startValue: year,
-          endLabel: 'Dorm', endValue: dorm,
+          startLabel: l.fieldYear, startValue: year,
+          endLabel: l.fieldDorm, endValue: dorm,
           textColor: textColor,
         ),
       ],
@@ -998,6 +1012,7 @@ class _CorporateBadgeLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final employeeName = _getFieldValue(pass.fields, 'EMPLOYEE NAME');
@@ -1011,15 +1026,15 @@ class _CorporateBadgeLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.badge_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Employee Name', value: employeeName, textColor: textColor),
+        _GWSingleRow(label: l.fieldEmployeeName, value: employeeName, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Company', startValue: company.isNotEmpty ? company : pass.organizationName,
-          endLabel: 'Department', endValue: department,
+          startLabel: l.fieldCompany, startValue: company.isNotEmpty ? company : pass.organizationName,
+          endLabel: l.fieldDept, endValue: department,
           textColor: textColor,
         ),
         _GWTwoItemRow(
-          startLabel: 'ID #', startValue: idNumber,
-          endLabel: 'Access Level', endValue: accessLevel,
+          startLabel: l.fieldIdNo, startValue: idNumber,
+          endLabel: l.fieldAccessLevel, endValue: accessLevel,
           textColor: textColor,
         ),
       ],
@@ -1037,6 +1052,7 @@ class _HotelKeyLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final guestName = _getFieldValue(pass.fields, 'GUEST NAME');
@@ -1050,15 +1066,15 @@ class _HotelKeyLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.hotel_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Guest Name', value: guestName, textColor: textColor),
+        _GWSingleRow(label: l.fieldGuestName, value: guestName, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Hotel', startValue: hotel.isNotEmpty ? hotel : pass.organizationName,
-          endLabel: 'Room #', endValue: roomNumber,
+          startLabel: l.fieldHotel, startValue: hotel.isNotEmpty ? hotel : pass.organizationName,
+          endLabel: l.fieldRoomNo, endValue: roomNumber,
           textColor: textColor,
         ),
         _GWTwoItemRow(
-          startLabel: 'Check-in', startValue: checkIn,
-          endLabel: 'Check-out', endValue: checkOut,
+          startLabel: l.fieldCheckIn, startValue: checkIn,
+          endLabel: l.fieldCheckOut, endValue: checkOut,
           textColor: textColor,
         ),
       ],
@@ -1076,6 +1092,7 @@ class _MultiFamilyKeyLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final residentName = _getFieldValue(pass.fields, 'RESIDENT NAME');
@@ -1088,13 +1105,13 @@ class _MultiFamilyKeyLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.apartment_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Resident Name', value: residentName, textColor: textColor),
+        _GWSingleRow(label: l.fieldResidentName, value: residentName, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Property', startValue: property.isNotEmpty ? property : pass.organizationName,
-          endLabel: 'Unit #', endValue: unitNumber,
+          startLabel: l.fieldProperty, startValue: property.isNotEmpty ? property : pass.organizationName,
+          endLabel: l.fieldUnitNo, endValue: unitNumber,
           textColor: textColor,
         ),
-        _GWSingleRow(label: 'Access Level', value: accessLevel, textColor: textColor),
+        _GWSingleRow(label: l.fieldAccessLevel, value: accessLevel, textColor: textColor),
       ],
     );
   }
@@ -1110,6 +1127,7 @@ class _DigitalCredentialLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final docType = _getFieldValue(pass.fields, 'DOCUMENT TYPE');
@@ -1123,15 +1141,15 @@ class _DigitalCredentialLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.verified_user_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Document Type', value: docType, textColor: textColor),
+        _GWSingleRow(label: l.fieldDocumentType, value: docType, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Issuer', startValue: issuer.isNotEmpty ? issuer : pass.organizationName,
-          endLabel: 'ID #', endValue: idNumber,
+          startLabel: l.fieldIssuer, startValue: issuer.isNotEmpty ? issuer : pass.organizationName,
+          endLabel: l.fieldIdNo, endValue: idNumber,
           textColor: textColor,
         ),
         _GWTwoItemRow(
-          startLabel: 'Expiry', startValue: expiry,
-          endLabel: 'Verified', endValue: verified,
+          startLabel: l.fieldExpiry, startValue: expiry,
+          endLabel: l.fieldVerified, endValue: verified,
           textColor: textColor,
         ),
       ],
@@ -1149,6 +1167,7 @@ class _GenericPrivateLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final dataType = _getFieldValue(pass.fields, 'DATA TYPE');
@@ -1160,10 +1179,10 @@ class _GenericPrivateLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.lock_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Data Type', value: dataType, textColor: textColor),
-        _GWSingleRow(label: 'ID #', value: idNumber, textColor: textColor),
+        _GWSingleRow(label: l.fieldDataType, value: dataType, textColor: textColor),
+        _GWSingleRow(label: l.fieldIdNo, value: idNumber, textColor: textColor),
         if (notes.isNotEmpty)
-          _GWSingleRow(label: 'Notes', value: notes, textColor: textColor),
+          _GWSingleRow(label: l.fieldNotes, value: notes, textColor: textColor),
       ],
     );
   }
@@ -1179,6 +1198,7 @@ class _InStorePaymentLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final cardNumber = _getFieldValue(pass.fields, 'CARD NUMBER');
@@ -1190,10 +1210,10 @@ class _InStorePaymentLayout extends StatelessWidget {
       onTap: onTap,
       titleIcon: Icons.contactless_rounded,
       fieldRows: [
-        _GWSingleRow(label: 'Card Number', value: cardNumber, textColor: textColor),
+        _GWSingleRow(label: l.fieldCardNumber, value: cardNumber, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Member Name', startValue: memberName,
-          endLabel: 'Card Type', endValue: cardType,
+          startLabel: l.fieldMemberName, startValue: memberName,
+          endLabel: l.fieldCardType, endValue: cardType,
           textColor: textColor,
         ),
       ],
@@ -1211,6 +1231,7 @@ class _CouponLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final bgColor = _parseColor(pass.backgroundColor, const Color(0xFF1E293B));
     final textColor = _getContrastingColor(bgColor);
     final offer = _getFieldValue(pass.fields, 'OFFER');
@@ -1224,14 +1245,14 @@ class _CouponLayout extends StatelessWidget {
       titleIcon: Icons.local_offer_rounded,
       fieldRows: [
         if (offer.isNotEmpty)
-          _GWSingleRow(label: 'Offer', value: offer, textColor: textColor),
+          _GWSingleRow(label: l.fieldOffer, value: offer, textColor: textColor),
         _GWTwoItemRow(
-          startLabel: 'Merchant', startValue: merchant,
-          endLabel: 'Expires', endValue: expires,
+          startLabel: l.fieldMerchant, startValue: merchant,
+          endLabel: l.fieldExpires, endValue: expires,
           textColor: textColor,
         ),
         if (terms.isNotEmpty)
-          _GWSingleRow(label: 'Terms', value: terms, textColor: textColor),
+          _GWSingleRow(label: l.fieldTerms, value: terms, textColor: textColor),
       ],
     );
   }

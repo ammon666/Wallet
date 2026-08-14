@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/services/barcode_decoder_service.dart';
 import 'package:wallet/services/barcode_utils.dart';
@@ -134,12 +135,13 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
   }
 
   void _addData() async {
+    final l = AppLocalizations.of(context)!;
     final org = _organizationController.text.trim();
     final value = _barcodeValueController.text.trim();
 
     if (org.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Organization is required.')),
+        SnackBar(content: Text(l.organizationRequired)),
       );
       return;
     }
@@ -192,6 +194,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
   }
 
   Future<void> _scanFromImagePath(String filePath) async {
+    final l = AppLocalizations.of(context)!;
     try {
       final scanResult = await BarcodeDecoderService.scanImageFile(File(filePath));
       if (scanResult != null && scanResult.text.isNotEmpty) {
@@ -206,7 +209,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Scanned ${scanResult.format ?? 'Barcode'}: ${scanResult.text}',
+                l.scannedFormat(scanResult.format ?? l.barcodeWord, scanResult.text),
               ),
             ),
           );
@@ -214,14 +217,14 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No barcode or QR code detected in the selected image.')),
+            SnackBar(content: Text(l.noBarcodeDetected)),
           );
         }
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error reading image file.')),
+          SnackBar(content: Text(l.errorReadingImage)),
         );
       }
     }
@@ -524,6 +527,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
   }
 
   Widget _buildFieldSection(String title, String sectionKey) {
+    final l = AppLocalizations.of(context)!;
     final fields = _dynamicFields[sectionKey]!;
     if (fields.isEmpty) return const SizedBox.shrink();
 
@@ -544,7 +548,10 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
             child: TextFormField(
               initialValue: fields[index]['value']?.toString(),
               decoration: InputDecoration(
-                labelText: fields[index]['label']?.toString().toUpperCase(),
+                labelText: _localizeFieldLabel(
+                  fields[index]['label']?.toString(),
+                  l,
+                ).toUpperCase(),
                 isDense: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -561,7 +568,168 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
     );
   }
 
+  /// Maps a stored English field-label key (e.g. 'FROM') to its localized
+  /// display string. Stored data stays locale-independent; only the UI is
+  /// translated. Unknown/custom labels fall back unchanged.
+  String _localizeFieldLabel(String? label, AppLocalizations l) {
+    switch (label) {
+      case 'FROM':
+        return l.fieldFrom;
+      case 'TO':
+        return l.fieldTo;
+      case 'PASSENGER':
+        return l.fieldPassenger;
+      case 'FLIGHT':
+        return l.fieldFlight;
+      case 'GATE':
+        return l.fieldGate;
+      case 'SEAT':
+        return l.fieldSeat;
+      case 'DEPARTURE':
+        return l.fieldDeparture;
+      case 'ARRIVAL':
+        return l.fieldArrival;
+      case 'MEMBER NAME':
+        return l.fieldMemberName;
+      case 'BALANCE':
+        return l.fieldBalance;
+      case 'TIER':
+        return l.fieldTier;
+      case 'ACCOUNT #':
+        return l.fieldAccountNo;
+      case 'POINTS':
+        return l.fieldPoints;
+      case 'CARD NUMBER':
+        return l.fieldCardNumber;
+      case 'PIN':
+        return l.fieldPin;
+      case 'RECIPIENT':
+        return l.fieldRecipient;
+      case 'EVENT #':
+        return l.fieldEventNo;
+      case 'OFFER':
+        return l.fieldOffer;
+      case 'PROVIDER':
+        return l.fieldProvider;
+      case 'EXPIRES':
+        return l.fieldExpires;
+      case 'TERMS':
+        return l.fieldTerms;
+      case 'CODE':
+        return l.fieldCode;
+      case 'EVENT':
+        return l.fieldEvent;
+      case 'VENUE':
+        return l.fieldVenue;
+      case 'DATE':
+        return l.fieldDate;
+      case 'SECTION':
+        return l.fieldSection;
+      case 'ROW':
+        return l.fieldRow;
+      case 'TIME':
+        return l.fieldTime;
+      case 'ROUTE':
+        return l.fieldRoute;
+      case 'FARE CLASS':
+        return l.fieldFareClass;
+      case 'COACH':
+        return l.fieldCoach;
+      case 'PLATFORM':
+        return l.fieldPlatform;
+      case 'VEHICLE':
+        return l.fieldVehicle;
+      case 'KEY STATUS':
+        return l.fieldKeyStatus;
+      case 'VIN':
+        return l.fieldVin;
+      case 'DEVICE':
+        return l.fieldDevice;
+      case 'STUDENT NAME':
+        return l.fieldStudentName;
+      case 'UNIVERSITY':
+        return l.fieldUniversity;
+      case 'ID #':
+        return l.fieldIdNo;
+      case 'DORM':
+        return l.fieldDorm;
+      case 'YEAR':
+        return l.fieldYear;
+      case 'EMPLOYEE NAME':
+        return l.fieldEmployeeName;
+      case 'COMPANY':
+        return l.fieldCompany;
+      case 'DEPT':
+        return l.fieldDept;
+      case 'ACCESS LEVEL':
+        return l.fieldAccessLevel;
+      case 'GUEST NAME':
+        return l.fieldGuestName;
+      case 'HOTEL':
+        return l.fieldHotel;
+      case 'ROOM #':
+        return l.fieldRoomNo;
+      case 'CHECK-IN':
+        return l.fieldCheckIn;
+      case 'CHECK-OUT':
+        return l.fieldCheckOut;
+      case 'RESIDENT NAME':
+        return l.fieldResidentName;
+      case 'PROPERTY':
+        return l.fieldProperty;
+      case 'UNIT #':
+        return l.fieldUnitNo;
+      case 'POLICY #':
+        return l.fieldPolicyNo;
+      case 'GROUP #':
+        return l.fieldGroupNo;
+      case 'PCN':
+        return l.fieldPcn;
+      case 'TEST TYPE':
+        return l.fieldTestType;
+      case 'RESULT':
+        return l.fieldResult;
+      case 'LAB':
+        return l.fieldLab;
+      case 'VACCINE':
+        return l.fieldVaccine;
+      case 'DOSE':
+        return l.fieldDose;
+      case 'MANUFACTURER':
+        return l.fieldManufacturer;
+      case 'LOT #':
+        return l.fieldLotNo;
+      case 'DOCUMENT TYPE':
+        return l.fieldDocumentType;
+      case 'ISSUER':
+        return l.fieldIssuer;
+      case 'EXPIRY':
+        return l.fieldExpiry;
+      case 'VERIFIED':
+        return l.fieldVerified;
+      case 'ORGANIZATION':
+        return l.fieldOrganization;
+      case 'DATA TYPE':
+        return l.fieldDataType;
+      case 'NOTES':
+        return l.fieldNotes;
+      case 'CARD TYPE':
+        return l.fieldCardType;
+      case 'MERCHANT':
+        return l.fieldMerchant;
+      case 'TERMS & CONDITIONS':
+        return l.fieldTermsConditions;
+      case 'CONTACT':
+        return l.fieldContact;
+      case 'DETAILS':
+        return l.fieldDetails;
+      default:
+        return label ?? '';
+    }
+  }
+
   List<DropdownMenuItem<String>> _buildCategorizedPassTypeItems() {
+    final l = AppLocalizations.of(context)!;
     final items = <DropdownMenuItem<String>>[];
     final categories = [
       PassCategory.retail,
@@ -584,7 +752,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
           enabled: false,
           value: 'header_${category.name}',
           child: Text(
-            '── ${category.label.toUpperCase()} ──',
+            '── ${category.localizedLabel(l).toUpperCase()} ──',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
@@ -613,7 +781,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
                         : Colors.black54,
                   ),
                   const SizedBox(width: 8),
-                  Text(getPassTypeLabel(type)),
+                  Text(getLocalizedPassTypeLabel(type, l)),
                 ],
               ),
             ),
@@ -632,6 +800,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
 
   Widget _buildManualEntryView() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = AppLocalizations.of(context)!;
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
@@ -641,7 +810,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
             type: _selectedType,
             organizationName:
                 _organizationController.text.isEmpty
-                    ? 'ORGANIZATION'
+                    ? l.fieldOrganization.toUpperCase()
                     : _organizationController.text,
             description:
                 _descriptionController.text.isEmpty
@@ -678,24 +847,24 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
         const SizedBox(height: 24),
         TextFormField(
           controller: _organizationController,
-          decoration: const InputDecoration(labelText: 'Name (Organization)'),
+          decoration: InputDecoration(labelText: l.nameOrganizationLabel),
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _barcodeValueController,
           decoration: InputDecoration(
-            labelText: 'Barcode Value',
+            labelText: l.barcodeValueLabel,
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
                   icon: const Icon(Icons.image_outlined),
-                  tooltip: 'Import from Gallery',
+                  tooltip: l.importFromGallery,
                   onPressed: _scanFromGallery,
                 ),
                 IconButton(
                   icon: const Icon(Icons.camera_alt_rounded),
-                  tooltip: 'Scan Barcode',
+                  tooltip: l.scanBarcode,
                   onPressed: _scan,
                 ),
               ],
@@ -705,7 +874,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           initialValue: _selectedBarcodeFormat,
-          decoration: const InputDecoration(labelText: 'Barcode Format'),
+          decoration: InputDecoration(labelText: l.barcodeFormatLabel),
           items:
               BarcodeUtils.supportedFormats.keys
                   .map((f) => DropdownMenuItem(value: f, child: Text(f)))
@@ -715,7 +884,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           initialValue: _selectedType,
-          decoration: const InputDecoration(labelText: 'Pass Category'),
+          decoration: InputDecoration(labelText: l.passCategoryLabel),
           items: _buildCategorizedPassTypeItems(),
           onChanged: (v) {
             if (v != null && v != _selectedType) {
@@ -730,7 +899,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             initialValue: _transitType,
-            decoration: const InputDecoration(labelText: 'Transit Type'),
+            decoration: InputDecoration(labelText: l.transitTypeLabel),
             items: [
               'BUS',
               'RAIL',
@@ -755,7 +924,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
         const SizedBox(height: 24),
 
         Text(
-          'ATTACHMENTS (OPTIONAL)',
+          l.attachmentsOptional,
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
@@ -768,7 +937,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
           children: [
             Expanded(
               child: _buildImagePickerTile(
-                'Front Side',
+                l.frontSide,
                 _frontImagePath,
                 () => _pickImage(true),
                 isDark,
@@ -777,7 +946,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
             const SizedBox(width: 16),
             Expanded(
               child: _buildImagePickerTile(
-                'Back Side',
+                l.backSide,
                 _backImagePath,
                 () => _pickImage(false),
                 isDark,
@@ -792,7 +961,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
             child: TextButton.icon(
               onPressed: () => setState(() => _showAdditionalDetails = true),
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Additional Details'),
+              label: Text(l.additionalDetails),
               style: TextButton.styleFrom(
                 foregroundColor: Colors.blue,
                 padding: const EdgeInsets.symmetric(
@@ -808,12 +977,12 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
           const SizedBox(height: 16),
           TextFormField(
             controller: _descriptionController,
-            decoration: const InputDecoration(labelText: 'Description'),
+            decoration: InputDecoration(labelText: l.descriptionLabel),
           ),
           const SizedBox(height: 16),
           TextFormField(
             controller: _logoTextController,
-            decoration: const InputDecoration(labelText: 'Logo Text'),
+            decoration: InputDecoration(labelText: l.logoTextLabel),
           ),
           const SizedBox(height: 32),
 
@@ -844,9 +1013,9 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
                   ? CircularProgressIndicator(
                       color: Theme.of(context).colorScheme.onPrimary,
                     )
-                  : const Text(
-                      'SAVE PASS',
-                      style: TextStyle(
+                  : Text(
+                      l.savePassButton,
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1,
                       ),

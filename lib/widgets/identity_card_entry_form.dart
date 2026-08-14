@@ -8,6 +8,7 @@ import 'package:wallet/services/image_service.dart';
 import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/widgets/identity_card_widget.dart';
 import 'package:wallet/widgets/color_picker.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 
 class IdentityCardEntryForm extends StatefulWidget {
   final IdentityCard? existingCard;
@@ -73,8 +74,9 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
     final cardType = _cardTypeController.text.trim();
 
     if (name.isEmpty || value.isEmpty) {
+      final l = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name and Value are required.')),
+        SnackBar(content: Text(l.validationNameValueRequired)),
       );
       return;
     }
@@ -82,11 +84,12 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
     setState(() => _isSaving = true);
 
     try {
+      final l = AppLocalizations.of(context)!;
       final card = IdentityCard(
         id: widget.existingCard?.id,
         name: name,
         value: value,
-        cardType: cardType.isEmpty ? 'Identity Card' : cardType,
+        cardType: cardType.isEmpty ? l.identityCardDefaultType : cardType,
         frontImagePath: _frontImagePath,
         backImagePath: _backImagePath,
         color: _selectedColor,
@@ -114,6 +117,7 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = AppLocalizations.of(context)!;
 
     return ListView(
       padding: const EdgeInsets.all(16.0),
@@ -121,12 +125,12 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
         // Preview
         IdentityCardWidget(
           card: IdentityCard(
-            name: _nameController.text.isEmpty ? 'NAME' : _nameController.text,
+            name: _nameController.text.isEmpty ? l.idNamePlaceholder : _nameController.text,
             value: _valueController.text.isEmpty
-                ? 'ID NUMBER'
+                ? l.idValuePlaceholder
                 : _valueController.text,
             cardType: _cardTypeController.text.isEmpty
-                ? 'IDENTITY CARD'
+                ? l.idCardTypePlaceholder
                 : _cardTypeController.text,
             frontImagePath: _frontImagePath,
             backImagePath: _backImagePath,
@@ -145,8 +149,8 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
         TextField(
           controller: _cardTypeController,
           decoration: InputDecoration(
-            labelText: 'Card Label (e.g. Passport, License)',
-            hintText: 'e.g. Passport',
+            labelText: l.idCardLabelHint,
+            hintText: l.idCardLabelExample,
             prefixIcon: const Icon(Icons.label_outline_rounded),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -156,8 +160,8 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
         TextField(
           controller: _nameController,
           decoration: InputDecoration(
-            labelText: 'Full Name',
-            hintText: 'e.g. John Doe',
+            labelText: l.fullNameLabel,
+            hintText: l.fullNameExample,
             prefixIcon: const Icon(Icons.person_outline_rounded),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -166,8 +170,8 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
         TextField(
           controller: _valueController,
           decoration: InputDecoration(
-            labelText: 'ID Value / Number',
-            hintText: 'e.g. 123-456-789',
+            labelText: l.idValueLabel,
+            hintText: l.idValueExample,
             prefixIcon: const Icon(Icons.badge_outlined),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -175,7 +179,7 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
         const SizedBox(height: 32),
 
         Text(
-          'ATTACHMENTS (OPTIONAL)',
+          l.attachmentsOptional,
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
@@ -189,7 +193,7 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
           children: [
             Expanded(
               child: _buildImagePickerTile(
-                'Front Side',
+                l.frontSide,
                 _frontImagePath,
                 () => _pickImage(true),
                 isDark,
@@ -198,7 +202,7 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
             const SizedBox(width: 16),
             Expanded(
               child: _buildImagePickerTile(
-                'Back Side',
+                l.backSide,
                 _backImagePath,
                 () => _pickImage(false),
                 isDark,
@@ -227,9 +231,9 @@ class IdentityCardEntryFormState extends State<IdentityCardEntryForm> {
                   ? CircularProgressIndicator(
                       color: Theme.of(context).colorScheme.onPrimary,
                     )
-                  : const Text(
-                      'SAVE IDENTITY CARD',
-                      style: TextStyle(
+                  : Text(
+                      l.saveIdentityCardButton,
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1,
                       ),

@@ -10,6 +10,7 @@ import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/widgets/credit_card_entry_form.dart';
 import 'package:wallet/widgets/barcode_card_entry_form.dart';
 import 'package:wallet/widgets/identity_card_entry_form.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 
 class AddCardScreen extends StatefulWidget {
   final int initialTabIndex;
@@ -27,6 +28,7 @@ class AddCardScreen extends StatefulWidget {
 
 class _AddCardScreenState extends State<AddCardScreen> {
   Future<void> _importPkpass() async {
+    final l = AppLocalizations.of(context)!;
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -42,18 +44,18 @@ class _AddCardScreenState extends State<AddCardScreen> {
             final confirm = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
-                title: const Text('Import Pass'),
+                title: Text(l.importPassTitle),
                 content: Text(
-                  'Do you want to import "${pass.organizationName}"?',
+                  l.importPassBody(pass.organizationName),
                 ),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel'),
+                    child: Text(l.cancelButton),
                   ),
                   TextButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Import'),
+                    child: Text(l.importButton),
                   ),
                 ],
               ),
@@ -65,7 +67,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
               if (mounted) {
                 context.read<PassProvider>().fetchPasses();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Pass imported successfully!')),
+                  SnackBar(content: Text(l.passImportedSuccessShort)),
                 );
                 Navigator.pop(context, true);
               }
@@ -74,7 +76,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Failed to parse .pkpass file.')),
+              SnackBar(content: Text(l.pkpassParseFailed)),
             );
           }
         }
@@ -82,7 +84,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to import pass. Please try again.')),
+          SnackBar(content: Text(l.passImportFailed)),
         );
       }
     }
@@ -94,6 +96,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
     final startupProvider = Provider.of<StartupSettingsProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
     final textColor = isDark ? Colors.white : Colors.black;
+    final l = AppLocalizations.of(context)!;
 
     final int effectiveIndex = startupProvider.paymentsOnlyMode ? 0 : widget.initialTabIndex;
 
@@ -146,7 +149,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
                   size: 18,
                 ),
                 label: Text(
-                  'Import pkpass',
+                  l.importPkpass,
                   style: TextStyle(
                     color: textColor,
                     fontSize: 12,

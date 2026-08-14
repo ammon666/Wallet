@@ -15,6 +15,7 @@ import 'package:wallet/widgets/full_screen_image_viewer.dart';
 import 'package:wallet/widgets/glass_credit_card.dart';
 import 'package:wallet/widgets/encrypted_image_display.dart';
 import 'package:wallet/screens/share_secure_screen.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 import 'dart:io';
 
 // WalletDetailScreen with liquid glass design
@@ -27,6 +28,7 @@ class WalletDetailScreen extends StatefulWidget {
 
 class _WalletDetailScreenState extends State<WalletDetailScreen> {
   late Wallet currentWallet;
+  bool _cvvRevealed = false;
 
   @override
   void initState() {
@@ -47,13 +49,13 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
     return '$symbol${result.toStringAsFixed(2)}';
   }
 
-  String _getFeeWaiverStatus(Wallet wallet, String symbol) {
+  String _getFeeWaiverStatus(Wallet wallet, String symbol, AppLocalizations l) {
     double spends = double.tryParse(wallet.spends ?? '0') ?? 0;
     double waiverRequirement =
         double.tryParse(wallet.annualFeeWaiver ?? '0') ?? 0;
-    if (waiverRequirement == 0) return "Not Applicable";
-    if (spends >= waiverRequirement) return "Waived Off";
-    return "$symbol${(waiverRequirement - spends).toStringAsFixed(2)} more to waive";
+    if (waiverRequirement == 0) return l.feeWaiverNotApplicable;
+    if (spends >= waiverRequirement) return l.feeWaiverWaived;
+    return l.feeWaiverRemaining(symbol, (waiverRequirement - spends).toStringAsFixed(2));
   }
 
   Widget _buildImageThumbnail(String imagePath, String label, bool isDark) {
@@ -130,6 +132,7 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
     final startupProvider = Provider.of<StartupSettingsProvider>(context);
     final isDark = themeProvider.isDarkMode;
     final symbol = startupProvider.selectedCurrencySymbol;
+    final l = AppLocalizations.of(context)!;
     bool isPathValid(String? path) => path != null && path.isNotEmpty;
 
     return Scaffold(
@@ -215,15 +218,99 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
             onCardTap: () {
               ClipboardService.instance.copy(currentWallet.number);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Card Number Copied!')),
+                SnackBar(content: Text(l.cardNumberCopiedBang)),
               );
             },
           ),
           const SizedBox(height: 20),
+          _LiquidGlassDetailSection(
+            title: l.walletDetailSecurity,
+            icon: Icons.lock_outline,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10.0),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : Colors.black.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.pin_outlined,
+                        size: 18,
+                        color: (isDark ? Colors.white : Colors.black)
+                            .withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        l.cvvLabel,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(
+                              color: (isDark ? Colors.white : Colors.black)
+                                  .withValues(alpha: 0.7),
+                            ),
+                      ),
+                    ),
+                    Text(
+                      (currentWallet.cvv == null || currentWallet.cvv!.isEmpty)
+                          ? l.naValue
+                          : (_cvvRevealed
+                              ? currentWallet.cvv!
+                              : '•' * currentWallet.cvv!.length),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,
+                            letterSpacing: 2,
+                          ),
+                    ),
+                    if (currentWallet.cvv != null &&
+                        currentWallet.cvv!.isNotEmpty) ...[
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(
+                          _cvvRevealed
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          size: 18,
+                          color: (isDark ? Colors.white : Colors.black)
+                              .withValues(alpha: 0.6),
+                        ),
+                        onPressed: () {
+                          setState(() => _cvvRevealed = !_cvvRevealed);
+                        },
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.copy_rounded,
+                          size: 18,
+                          color: (isDark ? Colors.white : Colors.black)
+                              .withValues(alpha: 0.6),
+                        ),
+                        onPressed: () {
+                          ClipboardService.instance.copy(currentWallet.cvv);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(l.cvvCopied)),
+                          );
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
           if (isPathValid(currentWallet.frontImagePath) ||
               isPathValid(currentWallet.backImagePath))
             _LiquidGlassDetailSection(
-              title: "Card Images",
+              title: l.walletDetailCardImages,
               icon: Icons.photo_library_outlined,
               children: [
                 Center(
@@ -233,13 +320,13 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
                       if (isPathValid(currentWallet.frontImagePath))
                         _buildImageThumbnail(
                           currentWallet.frontImagePath!,
-                          'Front',
+                          l.frontLabel,
                           isDark,
                         ),
                       if (isPathValid(currentWallet.backImagePath))
                         _buildImageThumbnail(
                           currentWallet.backImagePath!,
-                          'Back',
+                          l.backLabel,
                           isDark,
                         ),
                     ],
@@ -248,22 +335,22 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
               ],
             ),
           _LiquidGlassDetailSection(
-            title: "Financials",
+            title: l.walletDetailFinancials,
             icon: Icons.account_balance_wallet_outlined,
             children: [
               _LiquidGlassDetailTile(
                 icon: Icons.credit_score_outlined,
-                title: 'Max Limit',
-                value: '$symbol${currentWallet.maxlimit ?? 'N/A'}',
+                title: l.financialMaxLimit,
+                value: '$symbol${currentWallet.maxlimit ?? l.naValue}',
               ),
               _LiquidGlassDetailTile(
                 icon: Icons.receipt_long_outlined,
-                title: 'Annual Spends',
+                title: l.financialAnnualSpends,
                 value: '$symbol${currentWallet.spends ?? '0.00'}',
               ),
               _LiquidGlassDetailTile(
                 icon: Icons.card_giftcard_outlined,
-                title: 'Estimated Cashback',
+                title: l.financialEstimatedCashback,
                 value: _formatCashback(
                   currentWallet.spends,
                   currentWallet.rewards,
@@ -274,30 +361,30 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
             ],
           ),
           _LiquidGlassDetailSection(
-            title: "Billing & Terms",
+            title: l.walletDetailBillingTerms,
             icon: Icons.event_note_outlined,
             children: [
               _LiquidGlassDetailTile(
                 icon: Icons.calendar_today_outlined,
-                title: 'Bill Generation Date',
-                value: 'Every ${currentWallet.billdate ?? 'N/A'}',
+                title: l.financialBillDate,
+                value: l.billEveryDate(currentWallet.billdate ?? l.naValue),
               ),
               _LiquidGlassDetailTile(
                 icon: Icons.verified_outlined,
-                title: 'Annual Fee Waiver',
-                value: _getFeeWaiverStatus(currentWallet, symbol),
+                title: l.financialAnnualFeeWaiver,
+                value: _getFeeWaiverStatus(currentWallet, symbol, l),
               ),
               _LiquidGlassDetailTile(
                 icon: Icons.credit_card_outlined,
-                title: 'Card Type',
-                value: currentWallet.cardtype ?? 'N/A',
+                title: l.financialCardType,
+                value: currentWallet.cardtype ?? l.naValue,
               ),
             ],
           ),
           if (currentWallet.customFields != null &&
               currentWallet.customFields!.isNotEmpty)
             _LiquidGlassDetailSection(
-              title: "Custom Fields",
+              title: l.walletDetailCustomFields,
               icon: Icons.tune_outlined,
               children: currentWallet.customFields!.entries.map((entry) {
                 return _LiquidGlassDetailTile(
@@ -326,6 +413,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
   late TextEditingController _nameController,
       _numberController,
       _expiryController,
+      _cvvController,
       _issuerController,
       _maxlimitController,
       _spendsController,
@@ -336,6 +424,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
       _rewardsController;
   late String _network;
   late String _selectedColor;
+  bool _cvvVisible = false;
   final List<TextEditingController> _customFieldNameControllers = [];
   final List<TextEditingController> _customFieldValueControllers = [];
 
@@ -350,6 +439,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
     _nameController = TextEditingController(text: wallet.name);
     _numberController = TextEditingController(text: wallet.number);
     _expiryController = TextEditingController(text: wallet.expiry);
+    _cvvController = TextEditingController(text: wallet.cvv);
     _network = wallet.network ?? "visa";
     _issuerController = TextEditingController(text: wallet.issuer);
     _maxlimitController = TextEditingController(text: wallet.maxlimit);
@@ -397,6 +487,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
     _nameController.dispose();
     _numberController.dispose();
     _expiryController.dispose();
+    _cvvController.dispose();
     _issuerController.dispose();
     _maxlimitController.dispose();
     _spendsController.dispose();
@@ -494,6 +585,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
         name: _nameController.text,
         number: _numberController.text,
         expiry: _expiryController.text,
+        cvv: _cvvController.text,
         network: _network,
         issuer: _issuerController.text,
         maxlimit: _maxlimitController.text,
@@ -521,10 +613,11 @@ class WalletEditScreenState extends State<WalletEditScreen> {
     final startupProvider = Provider.of<StartupSettingsProvider>(context);
     final isDark = themeProvider.isDarkMode;
     final symbol = startupProvider.selectedCurrencySymbol;
+    final l = AppLocalizations.of(context)!;
 
     final previewWallet = Wallet(
       id: widget.wallet.id,
-      name: _nameController.text.isEmpty ? 'CARD NAME' : _nameController.text,
+      name: _nameController.text.isEmpty ? l.cardNamePlaceholder : _nameController.text,
       number: _numberController.text,
       expiry: _expiryController.text,
       network: _network,
@@ -560,7 +653,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                 backgroundColor: isDark ? Colors.white : Colors.black,
                 foregroundColor: isDark ? Colors.black : Colors.white,
               ),
-              child: const Text("SAVE"),
+              child: Text(l.saveButton),
             ),
           ),
         ],
@@ -577,7 +670,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
             ),
             const SizedBox(height: 24),
             _LiquidGlassDetailSection(
-              title: "Primary Details",
+              title: l.walletDetailPrimaryDetails,
               icon: Icons.credit_card_outlined,
               children: [
                 ColorPicker(
@@ -589,14 +682,14 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                 const SizedBox(height: 24),
                 _buildTextField(
                   _nameController,
-                  'Card Name',
+                  l.cardNameLabel,
                   isDark,
-                  validator: (v) => v!.isEmpty ? 'Please enter a name' : null,
+                  validator: (v) => v!.isEmpty ? l.validationEnterName : null,
                 ),
                 const SizedBox(height: 16),
                 _buildTextField(
                   _numberController,
-                  'Card Number',
+                  l.cardNumberLabel,
                   isDark,
                   keyboardType: TextInputType.number,
                   inputFormatters: [
@@ -607,11 +700,11 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                   ],
                   validator: (v) {
                     if (v == null || v.isEmpty) {
-                      return 'Please enter a card number';
+                      return l.validationEnterCardNumber;
                     }
                     final cleaned = v.replaceAll(RegExp(r'\D'), '');
                     if (cleaned.length < 13 || cleaned.length > 19) {
-                      return 'Card number must be 13-19 digits';
+                      return l.validationCardNumberLengthEdit;
                     }
                     return null;
                   },
@@ -619,24 +712,54 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                 const SizedBox(height: 16),
                 _buildTextField(
                   _expiryController,
-                  'Expiry (MMYY)',
+                  l.expiryLabel,
                   isDark,
                   keyboardType: TextInputType.number,
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(4),
                   ],
-                  validator: (v) => v!.length != 4 ? 'Must be 4 digits' : null,
+                  validator: (v) => v!.length != 4 ? l.validationExpiryLength : null,
+                ),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  _cvvController,
+                  l.cvvLabel,
+                  isDark,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(4),
+                  ],
+                  obscureText: !_cvvVisible,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _cvvVisible
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: isDark ? Colors.white54 : Colors.black54,
+                    ),
+                    onPressed: () {
+                      setState(() => _cvvVisible = !_cvvVisible);
+                    },
+                  ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return null;
+                    if (v.length < 3 || v.length > 4) {
+                      return l.validationCvvLength;
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 16),
                 _buildTextField(
                   _issuerController,
-                  'Card Issuer (e.g. HDFC)',
+                  l.cardIssuerLabelEdit,
                   isDark,
-                  validator: (v) => v!.isEmpty ? 'Please enter an issuer' : null,
+                  validator: (v) => v!.isEmpty ? l.validationEnterIssuer : null,
                 ),
                 const SizedBox(height: 16),
-                _buildDropdown('Card Network', _network, isDark, (newValue) {
+                _buildDropdown(l.cardNetworkLabel, _network, isDark, (newValue) {
                   if (newValue != null) {
                     setState(() => _network = newValue);
                   }
@@ -644,11 +767,11 @@ class WalletEditScreenState extends State<WalletEditScreen> {
               ],
             ),
             _LiquidGlassDetailSection(
-              title: "Card Images",
+              title: l.walletDetailCardImages,
               icon: Icons.photo_library_outlined,
               children: [
                 _buildImagePicker(
-                  'Front Image',
+                  l.frontImage,
                   _frontImageFile,
                   isDark,
                   () => _pickImage(ImageSource.gallery, true),
@@ -656,7 +779,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                 ),
                 const SizedBox(height: 16),
                 _buildImagePicker(
-                  'Back Image',
+                  l.backImage,
                   _backImageFile,
                   isDark,
                   () => _pickImage(ImageSource.gallery, false),
@@ -665,12 +788,12 @@ class WalletEditScreenState extends State<WalletEditScreen> {
               ],
             ),
             _LiquidGlassDetailSection(
-              title: "Financials",
+              title: l.walletDetailFinancials,
               icon: Icons.account_balance_wallet_outlined,
               children: [
                 _buildTextField(
                   _maxlimitController,
-                  'Max Limit ($symbol)',
+                  l.maxLimitField(symbol),
                   isDark,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -678,7 +801,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                 const SizedBox(height: 16),
                 _buildTextField(
                   _spendsController,
-                  'Current Spends ($symbol)',
+                  l.currentSpendsField(symbol),
                   isDark,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -686,7 +809,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                 const SizedBox(height: 16),
                 _buildTextField(
                   _rewardsController,
-                  'Cashback Rate (%)',
+                  l.cashbackRateField,
                   isDark,
                   keyboardType: TextInputType.number,
                   inputFormatters: [
@@ -697,12 +820,12 @@ class WalletEditScreenState extends State<WalletEditScreen> {
               ],
             ),
             _LiquidGlassDetailSection(
-              title: "Billing & Terms",
+              title: l.walletDetailBillingTerms,
               icon: Icons.event_note_outlined,
               children: [
                 _buildTextField(
                   _billdateController,
-                  'Bill Date (e.g., 15)',
+                  l.billDateField,
                   isDark,
                   keyboardType: TextInputType.number,
                   inputFormatters: [
@@ -713,7 +836,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                 const SizedBox(height: 16),
                 _buildTextField(
                   _annualFeeWaiverController,
-                  'Annual Fee Waiver on Spends of ($symbol)',
+                  l.annualFeeWaiverField(symbol),
                   isDark,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -721,13 +844,13 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                 const SizedBox(height: 16),
                 _buildTextField(
                   _cardtypeController,
-                  'Card Type (e.g., LTF, Paid)',
+                  l.cardTypeField,
                   isDark,
                 ),
               ],
             ),
             _LiquidGlassDetailSection(
-              title: "Custom Fields",
+              title: l.walletDetailCustomFields,
               icon: Icons.tune_outlined,
               children: [
                 ListView.builder(
@@ -742,7 +865,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                           Expanded(
                             child: _buildTextField(
                               _customFieldNameControllers[index],
-                              'Field Name',
+                              l.fieldNameLabel,
                               isDark,
                             ),
                           ),
@@ -750,7 +873,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                           Expanded(
                             child: _buildTextField(
                               _customFieldValueControllers[index],
-                              'Value',
+                              l.fieldValueLabel,
                               isDark,
                             ),
                           ),
@@ -773,7 +896,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                       color: isDark ? Colors.white : Colors.black,
                     ),
                     label: Text(
-                      "Add Custom Field",
+                      l.addCustomField,
                       style: TextStyle(
                         color: isDark ? Colors.white : Colors.black,
                       ),
@@ -797,6 +920,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
     List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
     Widget? suffixIcon,
+    bool obscureText = false,
   }) {
     final textColor = isDark ? Colors.white : Colors.black;
 
@@ -817,6 +941,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
         keyboardType: keyboardType,
         inputFormatters: inputFormatters,
         validator: validator,
+        obscureText: obscureText,
         style: TextStyle(color: textColor),
         decoration: InputDecoration(
           labelText: label,
@@ -862,12 +987,12 @@ class WalletEditScreenState extends State<WalletEditScreen> {
         ),
         dropdownColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
         style: TextStyle(color: textColor),
-        items: ['visa', 'mastercard', 'rupay', 'amex', 'discover'].map((
+        items: ['visa', 'mastercard', 'unionpay', 'amex', 'discover', 'jcb', 'rupay'].map((
           String value,
         ) {
           return DropdownMenuItem<String>(
             value: value,
-            child: Text(value.toUpperCase()),
+            child: Text(CardUtils.networkDisplayName(value)!),
           );
         }).toList(),
         onChanged: onChanged,
@@ -883,6 +1008,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
     VoidCallback onRemove,
   ) {
     final textColor = isDark ? Colors.white : Colors.black;
+    final l = AppLocalizations.of(context)!;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -901,7 +1027,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
           child: imageFile == null
               ? OutlinedButton.icon(
                   icon: const Icon(Icons.add_photo_alternate_outlined),
-                  label: const Text("Select Image"),
+                  label: Text(l.selectImage),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(200, 50),
                     side: BorderSide(
