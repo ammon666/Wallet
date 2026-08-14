@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:wallet/models/card_color_data.dart';
 import 'package:wallet/services/card_utils.dart';
+import 'package:wallet/widgets/network_brand_logos.dart';
 import '../models/db_helper.dart';
 
 class GlassCreditCard extends StatefulWidget {
@@ -218,11 +219,17 @@ class _NetworkLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 优先使用矢量品牌 logo（完全匹配官方色彩与样式）
+    final brandLogo = NetworkBrandLogos.build(network, height: 36);
+    if (brandLogo != null) {
+      return brandLogo;
+    }
     return Image.asset(
       "assets/network/${network ?? 'visa'}.png",
       fit: BoxFit.contain,
-      height: 30,
-      color: Colors.white,
+      height: 36,
+      // 注意：不再加 `color: Colors.white`，避免把彩色 logo 全部染白。
+      // 只有 silhouette 类图片（全黑/单色）才需要染色，但现有彩色品牌图不允许。
       errorBuilder: (context, error, stackTrace) {
         return Text(
           CardUtils.networkDisplayName(network) ?? 'CARD',
