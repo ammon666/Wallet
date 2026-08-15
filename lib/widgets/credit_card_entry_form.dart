@@ -29,13 +29,17 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   final _expiryController = TextEditingController();
   final _cvvController = TextEditingController();
   final _issuerController = TextEditingController();
+  final _tagController = TextEditingController();
+  final _numberFocusNode = FocusNode();
+  final _expiryFocusNode = FocusNode();
   String _network = "visa";
+  String? _cardCategory; // 'credit' | 'debit' | null
+  final List<String> _tags = [];
   late String _selectedColor;
   File? _frontImageFile;
   File? _backImageFile;
   bool _showAdditionalDetails = true;
   bool _isSaving = false;
-  bool _cvvVisible = true;
 
   final _customFieldNameControllers = <TextEditingController>[];
   final _customFieldValueControllers = <TextEditingController>[];
@@ -48,6 +52,17 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     _nameController.addListener(_onFieldChanged);
     _numberController.addListener(_onNumberChanged);
     _expiryController.addListener(_onFieldChanged);
+    // Validate on focus loss (not on every keystroke) — Feature 5.
+    _numberFocusNode.addListener(() {
+      if (!_numberFocusNode.hasFocus) {
+        _formKey.currentState?.validate();
+      }
+    });
+    _expiryFocusNode.addListener(() {
+      if (!_expiryFocusNode.hasFocus) {
+        _formKey.currentState?.validate();
+      }
+    });
   }
 
   void _onFieldChanged() {
@@ -78,6 +93,9 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     _expiryController.dispose();
     _cvvController.dispose();
     _issuerController.dispose();
+    _tagController.dispose();
+    _numberFocusNode.dispose();
+    _expiryFocusNode.dispose();
     for (var c in _customFieldNameControllers) {
       c.dispose();
     }
@@ -138,6 +156,8 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
           color: _selectedColor,
           frontImagePath: frontImagePath,
           backImagePath: backImagePath,
+          cardCategory: _cardCategory,
+          tags: _tags.isNotEmpty ? _tags : null,
         );
         await DatabaseHelper.instance.insertWallet(wallet);
         AutoBackupService.triggerBackup();
@@ -206,6 +226,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _numberController,
+                focusNode: _numberFocusNode,
                 decoration: InputDecoration(
                   labelText: l.cardNumberLabel,
                   suffixIcon: Consumer<ThemeProvider>(
@@ -253,32 +274,31 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _expiryController,
+                focusNode: _expiryFocusNode,
                 decoration: InputDecoration(labelText: l.expiryLabel),
                 keyboardType: TextInputType.number,
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(4),
                 ],
-                validator: (v) => v!.length != 4 ? l.validationExpiryLength : null,
+                validator: (v) {
+                  if (v == null || v.length != 4) {
+                    return l.validationExpiryLength;
+                  }
+                  final month = int.tryParse(v.substring(0, 2));
+                  if (month == null || month < 1 || month > 12) {
+                    return l.validationExpiryMonth;
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _cvvController,
                 decoration: InputDecoration(
                   labelText: l.cvvLabel,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _cvvVisible
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                    onPressed: () {
-                      setState(() => _cvvVisible = !_cvvVisible);
-                    },
-                  ),
                 ),
                 keyboardType: TextInputType.number,
-                obscureText: !_cvvVisible,
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(4),
@@ -300,18 +320,110 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                 validator: (v) => v!.isEmpty ? l.validationEnterIssuer : null,
               ),
               const SizedBox(height: 16),
+              DropdownButtonFormField<String?>(
+                value: _cardCategory,
+                decoration: InputDecoration(labelText: l.cardCategoryLabel),
+                items: [
+                  DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text(l.cardCategoryNone),
+                  ),
+                  DropdownMenuItem<String?>(
+                    value: 'credit',
+                    child: Text(l.cardCategoryCredit),
+                  ),
+                  DropdownMenuItem<String?>(
+                    value: 'debit',
+                    child: Text(l.cardCategoryDebit),
+                  ),
+                ],
+                onChanged: (newValue) =>
+                    setState(() => _cardCategory = newValue),
+              ),
+              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                initialValue: _network,
+                value: _network,
                 decoration: InputDecoration(labelText: l.cardNetworkLabel),
                 items: ['visa', 'mastercard', 'unionpay', 'amex', 'discover', 'jcb', 'rupay'].map((
                   String value,
                 ) {
                   return DropdownMenuItem<String>(
                     value: value,
-                    child: Text(CardUtils.networkDisplayName(value)!),
+                    child: Text(CardUtils.networkDisplayNameLocalized(value, l)!),
                   );
                 }).toList(),
                 onChanged: (newValue) => setState(() => _network = newValue!),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Tags input — Feature 10: custom tags shown on card face
+          FormSection(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    l.tagsLabel,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_tags.isNotEmpty)
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: _tags.map((tag) {
+                    return Chip(
+                      label: Text(tag),
+                      onDeleted: () {
+                        setState(() => _tags.remove(tag));
+                      },
+                      materialTapTargetSize:
+                          MaterialTapTargetSize.shrinkWrap,
+                    );
+                  }).toList(),
+                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _tagController,
+                      decoration: InputDecoration(
+                        hintText: l.tagsAddHint,
+                        isDense: true,
+                      ),
+                      onSubmitted: (value) {
+                        final trimmed = value.trim();
+                        if (trimmed.isNotEmpty && !_tags.contains(trimmed)) {
+                          setState(() {
+                            _tags.add(trimmed);
+                            _tagController.clear();
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.add_circle,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    onPressed: () {
+                      final trimmed = _tagController.text.trim();
+                      if (trimmed.isNotEmpty && !_tags.contains(trimmed)) {
+                        setState(() {
+                          _tags.add(trimmed);
+                          _tagController.clear();
+                        });
+                      }
+                    },
+                  ),
+                ],
               ),
             ],
           ),

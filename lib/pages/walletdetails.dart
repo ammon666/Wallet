@@ -11,6 +11,7 @@ import 'package:wallet/models/provider_helper.dart';
 import 'package:wallet/models/theme_provider.dart';
 import 'package:wallet/models/startup_settings_provider.dart';
 import 'package:wallet/services/card_utils.dart';
+import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/widgets/full_screen_image_viewer.dart';
 import 'package:wallet/widgets/glass_credit_card.dart';
 import 'package:wallet/widgets/encrypted_image_display.dart';
@@ -259,17 +260,28 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
                             ),
                       ),
                     ),
-                    Text(
-                      (currentWallet.cvv == null || currentWallet.cvv!.isEmpty)
-                          ? l.naValue
-                          : (_cvvRevealed
-                              ? currentWallet.cvv!
-                              : '•' * currentWallet.cvv!.length),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black,
-                            letterSpacing: 2,
-                          ),
+                    // Tap CVV text to copy (Feature 3: removed copy button)
+                    GestureDetector(
+                      onTap: () {
+                        final cvv = currentWallet.cvv;
+                        if (cvv == null || cvv.isEmpty) return;
+                        ClipboardService.instance.copy(cvv);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(l.cvvCopied)),
+                        );
+                      },
+                      child: Text(
+                        (currentWallet.cvv == null || currentWallet.cvv!.isEmpty)
+                            ? l.naValue
+                            : (_cvvRevealed
+                                ? currentWallet.cvv!
+                                : '•' * currentWallet.cvv!.length),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black,
+                              letterSpacing: 2,
+                            ),
+                      ),
                     ),
                     if (currentWallet.cvv != null &&
                         currentWallet.cvv!.isNotEmpty) ...[
@@ -285,22 +297,6 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
                         ),
                         onPressed: () {
                           setState(() => _cvvRevealed = !_cvvRevealed);
-                        },
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.copy_rounded,
-                          size: 18,
-                          color: (isDark ? Colors.white : Colors.black)
-                              .withValues(alpha: 0.6),
-                        ),
-                        onPressed: () {
-                          final cvv = currentWallet.cvv;
-                          if (cvv == null || cvv.isEmpty) return;
-                          ClipboardService.instance.copy(cvv);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(l.cvvCopied)),
-                          );
                         },
                       ),
                     ],
@@ -423,10 +419,14 @@ class WalletEditScreenState extends State<WalletEditScreen> {
       _billdateController,
       _categoryController,
       _annualFeeWaiverController,
-      _rewardsController;
+      _rewardsController,
+      _tagController;
   late String _network;
   late String _selectedColor;
-  bool _cvvVisible = false;
+  String? _cardCategory;
+  final List<String> _tags = [];
+  final _numberFocusNode = FocusNode();
+  final _expiryFocusNode = FocusNode();
   final List<TextEditingController> _customFieldNameControllers = [];
   final List<TextEditingController> _customFieldValueControllers = [];
 
@@ -453,7 +453,22 @@ class WalletEditScreenState extends State<WalletEditScreen> {
       text: wallet.annualFeeWaiver,
     );
     _rewardsController = TextEditingController(text: wallet.rewards);
+    _tagController = TextEditingController();
+    _cardCategory = wallet.cardCategory;
+    _tags.addAll(wallet.tags ?? []);
     _selectedColor = wallet.color ?? 'default';
+
+    // Validate on focus loss (Feature 5)
+    _numberFocusNode.addListener(() {
+      if (!_numberFocusNode.hasFocus) {
+        _formKey.currentState?.validate();
+      }
+    });
+    _expiryFocusNode.addListener(() {
+      if (!_expiryFocusNode.hasFocus) {
+        _formKey.currentState?.validate();
+      }
+    });
 
     if (wallet.frontImagePath != null && wallet.frontImagePath!.isNotEmpty) {
       _frontImageFile = File(wallet.frontImagePath!);
@@ -498,6 +513,9 @@ class WalletEditScreenState extends State<WalletEditScreen> {
     _categoryController.dispose();
     _annualFeeWaiverController.dispose();
     _rewardsController.dispose();
+    _tagController.dispose();
+    _numberFocusNode.dispose();
+    _expiryFocusNode.dispose();
     for (var controller in _customFieldNameControllers) {
       controller.dispose();
     }
@@ -601,10 +619,16 @@ class WalletEditScreenState extends State<WalletEditScreen> {
         color: _selectedColor,
         frontImagePath: frontImagePath,
         backImagePath: backImagePath,
+        orderIndex: widget.wallet.orderIndex,
+        isArchived: widget.wallet.isArchived,
+        cardCategory: _cardCategory,
+        tags: _tags.isNotEmpty ? _tags : null,
       );
       await DatabaseHelper.instance.updateWallet(updatedWallet);
+      AutoBackupService.triggerBackup();
 
       await provider.fetchWallets();
+      await provider.fetchArchivedWallets();
       navigator.pop(updatedWallet);
     }
   }
@@ -693,6 +717,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                   _numberController,
                   l.cardNumberLabel,
                   isDark,
+                  focusNode: _numberFocusNode,
                   keyboardType: TextInputType.number,
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
@@ -716,12 +741,22 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                   _expiryController,
                   l.expiryLabel,
                   isDark,
+                  focusNode: _expiryFocusNode,
                   keyboardType: TextInputType.number,
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(4),
                   ],
-                  validator: (v) => v!.length != 4 ? l.validationExpiryLength : null,
+                  validator: (v) {
+                    if (v == null || v.length != 4) {
+                      return l.validationExpiryLength;
+                    }
+                    final month = int.tryParse(v.substring(0, 2));
+                    if (month == null || month < 1 || month > 12) {
+                      return l.validationExpiryMonth;
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 16),
                 _buildTextField(
@@ -733,18 +768,6 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(4),
                   ],
-                  obscureText: !_cvvVisible,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _cvvVisible
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: isDark ? Colors.white54 : Colors.black54,
-                    ),
-                    onPressed: () {
-                      setState(() => _cvvVisible = !_cvvVisible);
-                    },
-                  ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return null;
                     if (v.length < 3 || v.length > 4) {
@@ -761,11 +784,109 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                   validator: (v) => v!.isEmpty ? l.validationEnterIssuer : null,
                 ),
                 const SizedBox(height: 16),
-                _buildDropdown(l.cardNetworkLabel, _network, isDark, (newValue) {
-                  if (newValue != null) {
-                    setState(() => _network = newValue);
-                  }
-                }),
+                _buildDropdown(
+                  l.cardCategoryLabel,
+                  _cardCategory,
+                  isDark,
+                  (newValue) => setState(() => _cardCategory = newValue),
+                  [
+                    DropdownMenuItem<String>(
+                      value: null,
+                      child: Text(l.cardCategoryNone),
+                    ),
+                    DropdownMenuItem<String>(
+                      value: 'credit',
+                      child: Text(l.cardCategoryCredit),
+                    ),
+                    DropdownMenuItem<String>(
+                      value: 'debit',
+                      child: Text(l.cardCategoryDebit),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildDropdown(
+                  l.cardNetworkLabel,
+                  _network,
+                  isDark,
+                  (newValue) {
+                    if (newValue != null) {
+                      setState(() => _network = newValue);
+                    }
+                  },
+                  ['visa', 'mastercard', 'unionpay', 'amex', 'discover', 'jcb', 'rupay']
+                      .map((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(
+                          CardUtils.networkDisplayNameLocalized(value, l)!),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+            // Tags input — Feature 10
+            _LiquidGlassDetailSection(
+              title: l.tagsLabel,
+              icon: Icons.label_outline,
+              children: [
+                if (_tags.isNotEmpty)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: _tags.map((tag) {
+                      return Chip(
+                        label: Text(tag),
+                        onDeleted: () {
+                          setState(() => _tags.remove(tag));
+                        },
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                      );
+                    }).toList(),
+                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _tagController,
+                        decoration: InputDecoration(
+                          hintText: l.tagsAddHint,
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onSubmitted: (value) {
+                          final trimmed = value.trim();
+                          if (trimmed.isNotEmpty &&
+                              !_tags.contains(trimmed)) {
+                            setState(() {
+                              _tags.add(trimmed);
+                              _tagController.clear();
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.add_circle,
+                        color: isDark ? Colors.white : Colors.black,
+                      ),
+                      onPressed: () {
+                        final trimmed = _tagController.text.trim();
+                        if (trimmed.isNotEmpty &&
+                            !_tags.contains(trimmed)) {
+                          setState(() {
+                            _tags.add(trimmed);
+                            _tagController.clear();
+                          });
+                        }
+                      },
+                    ),
+                  ],
+                ),
               ],
             ),
             _LiquidGlassDetailSection(
@@ -923,6 +1044,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
     String? Function(String?)? validator,
     Widget? suffixIcon,
     bool obscureText = false,
+    FocusNode? focusNode,
   }) {
     final textColor = isDark ? Colors.white : Colors.black;
 
@@ -940,6 +1062,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
       ),
       child: TextFormField(
         controller: controller,
+        focusNode: focusNode,
         keyboardType: keyboardType,
         inputFormatters: inputFormatters,
         validator: validator,
@@ -961,9 +1084,10 @@ class WalletEditScreenState extends State<WalletEditScreen> {
 
   Widget _buildDropdown(
     String label,
-    String value,
+    String? value,
     bool isDark,
     ValueChanged<String?> onChanged,
+    List<DropdownMenuItem<String>> items,
   ) {
     final textColor = isDark ? Colors.white : Colors.black;
 
@@ -979,24 +1103,20 @@ class WalletEditScreenState extends State<WalletEditScreen> {
               : Colors.black.withValues(alpha: 0.08),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: DropdownButtonFormField<String>(
-        initialValue: value,
+        value: value,
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(color: textColor.withValues(alpha: 0.5)),
           border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
         ),
         dropdownColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
         style: TextStyle(color: textColor),
-        items: ['visa', 'mastercard', 'unionpay', 'amex', 'discover', 'jcb', 'rupay'].map((
-          String value,
-        ) {
-          return DropdownMenuItem<String>(
-            value: value,
-            child: Text(CardUtils.networkDisplayName(value)!),
-          );
-        }).toList(),
+        items: items,
         onChanged: onChanged,
       ),
     );

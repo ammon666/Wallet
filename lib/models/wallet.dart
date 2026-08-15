@@ -21,6 +21,9 @@ class Wallet {
   final String? frontImagePath;
   final String? backImagePath;
   int orderIndex;
+  final bool isArchived;
+  final String? cardCategory; // 'credit' | 'debit' | null
+  final List<String>? tags;
 
   Wallet({
     this.id,
@@ -42,6 +45,9 @@ class Wallet {
     this.frontImagePath,
     this.backImagePath,
     this.orderIndex = 0,
+    this.isArchived = false,
+    this.cardCategory,
+    this.tags,
   });
 
   Map<String, dynamic> toMap() {
@@ -65,6 +71,9 @@ class Wallet {
       'frontImagePath': frontImagePath,
       'backImagePath': backImagePath,
       'orderIndex': orderIndex,
+      'isArchived': isArchived ? 1 : 0,
+      'cardCategory': cardCategory,
+      'tags': tags != null ? jsonEncode(tags) : null,
     };
   }
 
@@ -92,6 +101,9 @@ class Wallet {
       'frontImagePath': frontImagePath,
       'backImagePath': backImagePath,
       'orderIndex': orderIndex,
+      'isArchived': isArchived ? 1 : 0,
+      'cardCategory': enc.encryptText(cardCategory),
+      'tags': tags != null ? enc.encryptText(jsonEncode(tags)) : null,
     };
   }
 
@@ -118,6 +130,11 @@ class Wallet {
       frontImagePath: map['frontImagePath'],
       backImagePath: map['backImagePath'],
       orderIndex: map['orderIndex'] ?? 0,
+      isArchived: (map['isArchived'] ?? 0) == 1,
+      cardCategory: map['cardCategory'],
+      tags: map['tags'] != null
+          ? List<String>.from(jsonDecode(map['tags']))
+          : null,
     );
   }
 
@@ -145,6 +162,12 @@ class Wallet {
       frontImagePath: map['frontImagePath'],
       backImagePath: map['backImagePath'],
       orderIndex: map['orderIndex'] ?? 0,
+      isArchived: (map['isArchived'] ?? 0) == 1,
+      cardCategory: enc.decryptText(map['cardCategory']),
+      tags: map['tags'] != null
+          ? List<String>.from(
+              jsonDecode(enc.decryptText(map['tags']) ?? '[]'))
+          : null,
     );
   }
 
@@ -164,6 +187,12 @@ class Wallet {
       frontImagePath: map['frontImagePath'],
       backImagePath: map['backImagePath'],
       orderIndex: map['orderIndex'] ?? 0,
+      isArchived: (map['isArchived'] ?? 0) == 1,
+      cardCategory: enc.decryptText(map['cardCategory']),
+      tags: map['tags'] != null
+          ? List<String>.from(
+              jsonDecode(enc.decryptText(map['tags']) ?? '[]'))
+          : null,
     );
   }
 }

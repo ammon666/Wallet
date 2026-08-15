@@ -1,6 +1,7 @@
 // lib/widgets/glass_credit_card.dart - ULTRA PREMIUM DESIGN
 
 import 'package:flutter/material.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/card_color_data.dart';
 import 'package:wallet/services/card_utils.dart';
 import 'package:wallet/widgets/network_brand_logos.dart';
@@ -39,9 +40,11 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
 
   @override
   Widget build(BuildContext context) {
-    final lastFour = widget.wallet.number.length >= 4
-        ? widget.wallet.number.substring(widget.wallet.number.length - 4)
-        : widget.wallet.number;
+    final number = widget.wallet.number;
+    final firstFour = number.length >= 8 ? number.substring(0, 4) : '';
+    final lastFour = number.length >= 4
+        ? number.substring(number.length - 4)
+        : number;
 
     final String colorKey = widget.wallet.color ?? '#0F0F0F';
     final CardColorData colorData = CardColorData.fromHexOrKey(colorKey);
@@ -51,13 +54,13 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
       child: RepaintBoundary(
         child: GestureDetector(
           onTap: widget.onCardTap,
-          child: _buildFront(colorData, lastFour),
+          child: _buildFront(colorData, firstFour, lastFour),
         ),
       ),
     );
   }
 
-  Widget _buildFront(CardColorData colorData, String lastFour) {
+  Widget _buildFront(CardColorData colorData, String firstFour, String lastFour) {
     return AspectRatio(
       aspectRatio: 1.586,
       child: ClipRRect(
@@ -92,9 +95,20 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _IssuerBadge(
-                        issuer: widget.wallet.issuer,
-                        network: widget.wallet.network,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _IssuerBadge(
+                            issuer: widget.wallet.issuer,
+                            network: widget.wallet.network,
+                          ),
+                          if (widget.wallet.cardCategory != null) ...[
+                            const SizedBox(height: 4),
+                            _CardCategoryBadge(
+                              category: widget.wallet.cardCategory!,
+                            ),
+                          ],
+                        ],
                       ),
                       SizedBox(
                         height: 36,
@@ -108,7 +122,7 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       widget.isMasked
-                          ? "••••  ••••  ••••  $lastFour"
+                          ? "$firstFour  ••••  ••••  $lastFour"
                           : _formatCardNumber(widget.wallet.number).trim(),
                       style: TextStyle(
                         fontFamily: 'Courier',
@@ -126,6 +140,18 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                       ),
                     ),
                   ),
+                  if (widget.wallet.tags != null &&
+                      widget.wallet.tags!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 2,
+                      children: widget.wallet.tags!
+                          .take(4)
+                          .map((tag) => _TagChip(label: tag))
+                          .toList(),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -182,9 +208,10 @@ class _IssuerBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final raw = (issuer != null && issuer!.trim().isNotEmpty)
         ? issuer!.trim()
-        : (CardUtils.networkDisplayName(network) ?? 'CARD');
+        : (CardUtils.networkDisplayNameLocalized(network, l) ?? 'CARD');
     final display = raw.length > 8 ? '${raw.substring(0, 8)}…' : raw;
     return Container(
       constraints: const BoxConstraints(maxWidth: 150),
@@ -231,8 +258,9 @@ class _NetworkLogo extends StatelessWidget {
       // 注意：不再加 `color: Colors.white`，避免把彩色 logo 全部染白。
       // 只有 silhouette 类图片（全黑/单色）才需要染色，但现有彩色品牌图不允许。
       errorBuilder: (context, error, stackTrace) {
+        final l = AppLocalizations.of(context)!;
         return Text(
-          CardUtils.networkDisplayName(network) ?? 'CARD',
+          CardUtils.networkDisplayNameLocalized(network, l) ?? 'CARD',
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w900,
@@ -241,6 +269,66 @@ class _NetworkLogo extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Small badge showing card category (信用卡 / 借记卡) on the card face.
+class _CardCategoryBadge extends StatelessWidget {
+  final String category;
+
+  const _CardCategoryBadge({required this.category});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final label = category == 'credit'
+        ? l.cardCategoryCredit
+        : category == 'debit'
+            ? l.cardCategoryDebit
+            : category;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// Small semi-transparent chip for displaying a custom tag on the card face.
+class _TagChip extends StatelessWidget {
+  final String label;
+
+  const _TagChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
     );
   }
 }

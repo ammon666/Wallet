@@ -51,6 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   String _selectedFilter = 'all';
   String _selectedPassFilter = 'all';
+  String _selectedIssuer = 'all';
+  String _selectedCardType = 'all';
+  bool _showArchived = false;
 
   late final TextEditingController _searchController;
   String _searchQuery = "";
@@ -531,13 +534,13 @@ class _HomeScreenState extends State<HomeScreen> {
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
           title: Text(
-            l.deleteWalletTitle,
+            l.actionDeletePermanently,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
           content: Text(
-            l.deleteConfirmBody(name),
+            l.deletePermanentlyConfirmBody(name),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: isDark ? Colors.white70 : Colors.black87,
             ),
@@ -568,6 +571,61 @@ class _HomeScreenState extends State<HomeScreen> {
                 ).showSnackBar(SnackBar(content: Text(l.cardDeleted)));
               },
               child: Text(l.deleteButton),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Archive confirmation — no fingerprint needed (non-destructive).
+  void _showArchiveConfirmationDialog({
+    required int id,
+    required String name,
+  }) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+    final l = AppLocalizations.of(context)!;
+
+    showDialog(
+      context: context,
+      barrierColor: isDark ? Colors.black54 : Colors.black26,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
+          title: Text(
+            l.actionArchive,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            l.archiveConfirmBody(name),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.white70 : Colors.black87,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(
+                l.cancelButton,
+                style: TextStyle(
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+            ),
+            FilledButton(
+              onPressed: () async {
+                HapticFeedback.mediumImpact();
+                Navigator.of(ctx).pop();
+                await context.read<WalletProvider>().archiveWallet(id);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(l.cardArchived)),
+                );
+              },
+              child: Text(l.actionArchive),
             ),
           ],
         );
@@ -800,6 +858,53 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Returns the issuer name for display, falling back to localized "Unknown".
+  String _getIssuerName(Wallet wallet, AppLocalizations l) {
+    if (wallet.issuer != null && wallet.issuer!.isNotEmpty) {
+      return wallet.issuer!;
+    }
+    return l.unknownIssuer;
+  }
+
+  /// Compact dropdown used in the filter row.
+  Widget _buildCompactDropdown({
+    required String label,
+    required String value,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.059)
+            : Colors.black.withValues(alpha: 0.031),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.102)
+              : Colors.black.withValues(alpha: 0.059),
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: items.any((e) => e.value == value) ? value : null,
+          isExpanded: true,
+          hint: Text(label, style: const TextStyle(fontSize: 13)),
+          items: items,
+          onChanged: onChanged,
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black,
+            fontSize: 13,
+          ),
+          dropdownColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+          isDense: true,
+        ),
+      ),
+    );
+  }
+
   Widget _buildPaymentsTab(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
@@ -807,15 +912,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Consumer<WalletProvider>(
       builder: (context, provider, child) {
-        final wallets = provider.wallets;
+        final wallets = _showArchived ? provider.archivedWallets : provider.wallets;
+
         if (wallets.isEmpty) {
           return _buildEmptyState(
             context,
-            l.emptyPayments,
+            _showArchived ? l.noArchivedCards : l.emptyPayments,
           );
         }
 
-        // 1. First, filter by the search query.
+        // 1. Search filter
         final List<Wallet> searchedWallets = _searchQuery.isEmpty
             ? wallets
             : wallets.where((wallet) {
@@ -832,11 +938,48 @@ class _HomeScreenState extends State<HomeScreen> {
                 return nameMatch || numberMatch || networkMatch || issuerMatch || typeMatch;
               }).toList();
 
-        // 2. Then, filter the result by the network button.
-        final List<Wallet> filteredWallets = searchedWallets.where((wallet) {
+        // 2. Network filter
+        final List<Wallet> networkFiltered = searchedWallets.where((wallet) {
           if (_selectedFilter == 'all') return true;
           return wallet.network?.toLowerCase() == _selectedFilter;
         }).toList();
+
+        // 3. Issuer filter
+        final List<Wallet> issuerFiltered = networkFiltered.where((wallet) {
+          if (_selectedIssuer == 'all') return true;
+          return _getIssuerName(wallet, l) == _selectedIssuer;
+        }).toList();
+
+        // 4. Category filter (credit / debit / none / all)
+        final List<Wallet> filteredWallets = issuerFiltered.where((wallet) {
+          if (_selectedCardType == 'all') return true;
+          if (_selectedCardType == 'none') return wallet.cardCategory == null;
+          return wallet.cardCategory == _selectedCardType;
+        }).toList();
+
+        // 5. Unique issuers for dropdown (derived from searched, pre-issuer-filter)
+        final uniqueIssuers = <String>{};
+        for (final w in searchedWallets) {
+          uniqueIssuers.add(_getIssuerName(w, l));
+        }
+        final sortedIssuers = uniqueIssuers.toList()..sort();
+
+        // 6. Group by issuer (sorted alphabetically; within group by orderIndex)
+        final Map<String, List<Wallet>> byIssuer = {};
+        for (final w in filteredWallets) {
+          final issuer = _getIssuerName(w, l);
+          byIssuer.putIfAbsent(issuer, () => []).add(w);
+        }
+        final groupedIssuers = byIssuer.keys.toList()..sort();
+
+        // 7. Build mixed list [Header, Card, Card, Header, Card, ...]
+        final List<_PaymentListItem> items = [];
+        for (final issuer in groupedIssuers) {
+          items.add(_PaymentListItem.header(issuer, byIssuer[issuer]!.length));
+          for (final w in byIssuer[issuer]!) {
+            items.add(_PaymentListItem.card(w));
+          }
+        }
 
         return CustomScrollView(
           physics: const BouncingScrollPhysics(
@@ -846,7 +989,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // Search field
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
@@ -890,167 +1033,327 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            // Filter chips
+                        // Active / Archived view toggle
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SegmentedButton<String>(
-                    segments: [
-                      ButtonSegment<String>(value: 'all', label: Text(l.filterAll)),
-                      ButtonSegment<String>(value: 'visa', label: const Text('VISA')),
-                      ButtonSegment<String>(
-                        value: 'mastercard',
-                        label: const Text('MASTERCARD'),
-                      ),
-                      ButtonSegment<String>(
-                        value: 'rupay',
-                        label: const Text('RUPAY'),
-                      ),
-                      ButtonSegment<String>(value: 'amex', label: const Text('AMEX')),
-                      ButtonSegment<String>(
-                        value: 'discover',
-                        label: const Text('DISCOVER'),
-                      ),
-                      ButtonSegment<String>(
-                        value: 'unionpay',
-                        label: const Text('银联'),
-                      ),
-                      ButtonSegment<String>(value: 'jcb', label: const Text('JCB')),
-                    ],
-                    showSelectedIcon: false,
-                    selected: <String>{_selectedFilter},
-                    onSelectionChanged: (Set<String> newSelection) {
-                      HapticFeedback.selectionClick();
-                      setState(() => _selectedFilter = newSelection.first);
-                    },
-                  ),
+                child: SegmentedButton<bool>(
+                  segments: [
+                    ButtonSegment<bool>(value: false, label: Text(l.activeView)),
+                    ButtonSegment<bool>(value: true, label: Text(l.archivedView)),
+                  ],
+                  showSelectedIcon: false,
+                  selected: <bool>{_showArchived},
+                  onSelectionChanged: (Set<bool> newSelection) {
+                    HapticFeedback.selectionClick();
+                    final value = newSelection.first;
+                    setState(() {
+                      _showArchived = value;
+                      _selectedFilter = 'all';
+                      _selectedIssuer = 'all';
+                      _selectedCardType = 'all';
+                    });
+                    if (value) {
+                      context.read<WalletProvider>().fetchArchivedWallets();
+                    } else {
+                      context.read<WalletProvider>().fetchWallets();
+                    }
+                  },
                 ),
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
-            // Cards list
-            if (filteredWallets.isEmpty)
+            // Compact filter row: network chips + issuer dropdown + category dropdown
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Column(
+                  children: [
+                    // Network chips (compact, horizontal scroll)
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SegmentedButton<String>(
+                        segments: [
+                          ButtonSegment<String>(value: 'all', label: Text(l.filterAll)),
+                          ButtonSegment<String>(value: 'visa', label: const Text('VISA')),
+                          ButtonSegment<String>(value: 'mastercard', label: const Text('MC')),
+                          ButtonSegment<String>(value: 'unionpay', label: const Text('银联')),
+                          ButtonSegment<String>(value: 'amex', label: const Text('AMEX')),
+                          ButtonSegment<String>(value: 'discover', label: const Text('DISC')),
+                          ButtonSegment<String>(value: 'rupay', label: const Text('RUPAY')),
+                          ButtonSegment<String>(value: 'jcb', label: const Text('JCB')),
+                        ],
+                        showSelectedIcon: false,
+                        selected: <String>{_selectedFilter},
+                        onSelectionChanged: (Set<String> newSelection) {
+                          HapticFeedback.selectionClick();
+                          setState(() => _selectedFilter = newSelection.first);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Issuer + Category dropdowns side by side
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildCompactDropdown(
+                            label: l.filterIssuer,
+                            value: _selectedIssuer,
+                            items: [
+                              DropdownMenuItem(value: 'all', child: Text(l.filterAll)),
+                              ...sortedIssuers.map((issuer) =>
+                                  DropdownMenuItem(value: issuer, child: Text(issuer))),
+                            ],
+                            onChanged: (v) {
+                              if (v != null) setState(() => _selectedIssuer = v);
+                            },
+                            isDark: isDark,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildCompactDropdown(
+                            label: l.filterType,
+                            value: _selectedCardType,
+                            items: [
+                              DropdownMenuItem(value: 'all', child: Text(l.filterAll)),
+                              DropdownMenuItem(value: 'credit', child: Text(l.cardCategoryCredit)),
+                              DropdownMenuItem(value: 'debit', child: Text(l.cardCategoryDebit)),
+                              DropdownMenuItem(value: 'none', child: Text(l.cardCategoryNone)),
+                            ],
+                            onChanged: (v) {
+                              if (v != null) setState(() => _selectedCardType = v);
+                            },
+                            isDark: isDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+            // Grouped cards list
+            if (items.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(48.0),
                   child: Center(
-                        child: Text(
-                          l.noCardsFound,
-                          style: TextStyle(
-                            color: isDark ? Colors.white54 : Colors.black45,
-                          ),
-                        ),
+                    child: Text(
+                      _showArchived ? l.noArchivedCards : l.noCardsFound,
+                      style: TextStyle(
+                        color: isDark ? Colors.white54 : Colors.black45,
                       ),
                     ),
-                  )
+                  ),
+                ),
+              )
             else
               SliverReorderableList(
-                itemCount: filteredWallets.length,
-                // ignore: deprecated_member_use
+                itemCount: items.length,
                 onReorder: (oldIndex, newIndex) {
+                  // Headers cannot be dragged; archived view is read-only for reorder.
+                  if (items[oldIndex].isHeader) return;
+                  if (_showArchived) return;
+
+                  // Find the group boundaries for the dragged card.
+                  int groupStart = oldIndex;
+                  while (groupStart > 0 && !items[groupStart].isHeader) {
+                    groupStart--;
+                  }
+                  int groupEnd = oldIndex + 1;
+                  while (groupEnd < items.length && !items[groupEnd].isHeader) {
+                    groupEnd++;
+                  }
+
+                  // Only allow reordering within the same issuer group.
+                  if (newIndex <= groupStart || newIndex > groupEnd) return;
+
+                  // Convert mixed-list indices to filtered-list (wallet-only) indices.
+                  int oldFilteredIndex = 0;
+                  for (int i = 0; i < oldIndex; i++) {
+                    if (!items[i].isHeader) oldFilteredIndex++;
+                  }
+                  int newFilteredIndex = 0;
+                  for (int i = 0; i < newIndex; i++) {
+                    if (!items[i].isHeader) newFilteredIndex++;
+                  }
+
                   HapticFeedback.lightImpact();
-                  context.read<WalletProvider>().reorderWallets(
-                    oldIndex,
-                    newIndex,
-                  );
+                  context.read<WalletProvider>().reorderDisplayWallets(
+                        filteredWallets,
+                        oldFilteredIndex,
+                        newFilteredIndex,
+                      );
                 },
                 itemBuilder: (context, index) {
-                  final wallet = filteredWallets[index];
+                  final item = items[index];
+
+                  // Group header — not draggable, not reorderable.
+                  if (item.isHeader) {
+                    return Container(
+                      key: ValueKey('header_${item.headerText}'),
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.account_balance_outlined,
+                            size: 14,
+                            color: (isDark ? Colors.white : Colors.black)
+                                .withValues(alpha: 0.4),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            item.headerText!,
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: (isDark ? Colors.white : Colors.black)
+                                      .withValues(alpha: 0.5),
+                                  letterSpacing: 0.5,
+                                ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${item.headerCount}',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: (isDark ? Colors.white : Colors.black)
+                                      .withValues(alpha: 0.3),
+                                ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final wallet = item.wallet!;
                   return ReorderableDelayedDragStartListener(
                     key: ValueKey(wallet.id),
                     index: index,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                        child: Slidable(
-                          key: ValueKey(wallet.id),
-                          startActionPane: ActionPane(
-                            motion: const BehindMotion(),
-                            extentRatio: 0.25,
-                            children: [
-                              SlidableAction(
-                                onPressed: (ctx) async {
-                                  HapticFeedback.lightImpact();
-                                  final provider = ctx.read<WalletProvider>();
-                                  final fullWallet = await provider.getWalletDetails(wallet.id!);
-                                  if (fullWallet != null && ctx.mounted) {
-                                    Navigator.push(
-                                      ctx,
-                                      SmoothPageRoute(
-                                        page: WalletEditScreen(wallet: fullWallet),
-                                      ),
-                                    );
-                                  }
-                                },
-                                backgroundColor: Colors.transparent,
-                                foregroundColor: Colors.blue,
-                                icon: Icons.edit_outlined,
-                                label: l.actionEdit,
-                              ),
-                            ],
-                          ),
-                          endActionPane: ActionPane(
-                            motion: const BehindMotion(),
-                            extentRatio: 0.45,
-                            children: [
-                              SlidableAction(
-                                onPressed: (ctx) {
-                                  HapticFeedback.mediumImpact();
-                                  ClipboardService.instance.copy(wallet.number);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        l.cardNumberCopied,
-                                      ),
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      duration: const Duration(seconds: 1),
-                                    ),
-                                  );
-                                },
-                                backgroundColor: Colors.transparent,
-                                foregroundColor: Colors.blue,
-                                icon: Icons.copy_rounded,
-                                label: l.actionCopy,
-                              ),
-                              SlidableAction(
-                                onPressed: (ctx) {
-                                  HapticFeedback.mediumImpact();
-                                  _showWalletDeleteConfirmationDialog(
-                                    id: wallet.id!,
-                                    name: wallet.name,
-                                  );
-                                },
-                                backgroundColor: Colors.transparent,
-                                foregroundColor: Colors.red,
-                                icon: Icons.delete_outline_rounded,
-                                label: l.actionDelete,
-                              ),
-                            ],
-                          ),
-                          child: GlassCreditCard(
-                            wallet: wallet,
-                            isMasked: true,
-                            onCardTap: () async {
-                              final navCtx = context;
-                              final provider = navCtx.read<WalletProvider>();
-                              final fullWallet = await provider.getWalletDetails(wallet.id!);
-                              if (fullWallet != null && navCtx.mounted) {
-                                Navigator.push(
-                                  navCtx,
-                                  SmoothPageRoute(
-                                    page: WalletDetailScreen(wallet: fullWallet),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                      child: Slidable(
+                        key: ValueKey('slidable_${wallet.id}'),
+                        startActionPane: _showArchived
+                            ? null
+                            : ActionPane(
+                                motion: const BehindMotion(),
+                                extentRatio: 0.25,
+                                children: [
+                                  SlidableAction(
+                                    onPressed: (ctx) async {
+                                      HapticFeedback.lightImpact();
+                                      final provider = ctx.read<WalletProvider>();
+                                      final fullWallet =
+                                          await provider.getWalletDetails(wallet.id!);
+                                      if (fullWallet != null && ctx.mounted) {
+                                        Navigator.push(
+                                          ctx,
+                                          SmoothPageRoute(
+                                            page: WalletEditScreen(wallet: fullWallet),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    backgroundColor: Colors.transparent,
+                                    foregroundColor: Colors.blue,
+                                    icon: Icons.edit_outlined,
+                                    label: l.actionEdit,
                                   ),
-                                );
-                              }
-                            },
-                          ),
+                                ],
+                              ),
+                        endActionPane: ActionPane(
+                          motion: const BehindMotion(),
+                          extentRatio: _showArchived ? 0.5 : 0.45,
+                          children: _showArchived
+                              ? [
+                                  SlidableAction(
+                                    onPressed: (ctx) async {
+                                      HapticFeedback.mediumImpact();
+                                      await context
+                                          .read<WalletProvider>()
+                                          .unarchiveWallet(wallet.id!);
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(l.cardUnarchived)),
+                                      );
+                                    },
+                                    backgroundColor: Colors.transparent,
+                                    foregroundColor: Colors.green,
+                                    icon: Icons.unarchive_outlined,
+                                    label: l.actionUnarchive,
+                                  ),
+                                  SlidableAction(
+                                    onPressed: (ctx) {
+                                      HapticFeedback.mediumImpact();
+                                      _showWalletDeleteConfirmationDialog(
+                                        id: wallet.id!,
+                                        name: wallet.name,
+                                      );
+                                    },
+                                    backgroundColor: Colors.transparent,
+                                    foregroundColor: Colors.red,
+                                    icon: Icons.delete_forever_rounded,
+                                    label: l.actionDeletePermanently,
+                                  ),
+                                ]
+                              : [
+                                  SlidableAction(
+                                    onPressed: (ctx) {
+                                      HapticFeedback.mediumImpact();
+                                      ClipboardService.instance.copy(wallet.number);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(l.cardNumberCopied),
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          duration: const Duration(seconds: 1),
+                                        ),
+                                      );
+                                    },
+                                    backgroundColor: Colors.transparent,
+                                    foregroundColor: Colors.blue,
+                                    icon: Icons.copy_rounded,
+                                    label: l.actionCopy,
+                                  ),
+                                  SlidableAction(
+                                    onPressed: (ctx) {
+                                      HapticFeedback.mediumImpact();
+                                      _showArchiveConfirmationDialog(
+                                        id: wallet.id!,
+                                        name: wallet.name,
+                                      );
+                                    },
+                                    backgroundColor: Colors.transparent,
+                                    foregroundColor: Colors.orange,
+                                    icon: Icons.archive_outlined,
+                                    label: l.actionArchive,
+                                  ),
+                                ],
+                        ),
+                        child: GlassCreditCard(
+                          wallet: wallet,
+                          isMasked: true,
+                          onCardTap: () async {
+                            final navCtx = context;
+                            final provider = navCtx.read<WalletProvider>();
+                            final fullWallet =
+                                await provider.getWalletDetails(wallet.id!);
+                            if (fullWallet != null && navCtx.mounted) {
+                              Navigator.push(
+                                navCtx,
+                                SmoothPageRoute(
+                                  page: WalletDetailScreen(wallet: fullWallet),
+                                ),
+                              );
+                            }
+                          },
                         ),
                       ),
-                    );
+                    ),
+                  );
                 },
               ),
             // Bottom padding
@@ -1502,5 +1805,32 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+}
+
+/// Mixed-list item for the grouped payments tab: either a group header or a wallet card.
+class _PaymentListItem {
+  final bool isHeader;
+  final String? headerText;
+  final Wallet? wallet;
+  final int headerCount;
+
+  const _PaymentListItem._({
+    required this.isHeader,
+    this.headerText,
+    this.wallet,
+    this.headerCount = 0,
+  });
+
+  factory _PaymentListItem.header(String text, int count) {
+    return _PaymentListItem._(
+      isHeader: true,
+      headerText: text,
+      headerCount: count,
+    );
+  }
+
+  factory _PaymentListItem.card(Wallet wallet) {
+    return _PaymentListItem._(isHeader: false, wallet: wallet);
   }
 }

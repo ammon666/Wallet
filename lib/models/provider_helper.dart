@@ -4,9 +4,15 @@ import 'package:wallet/services/auto_backup_service.dart';
 
 class WalletProvider with ChangeNotifier {
   List<Wallet> wallets = [];
+  List<Wallet> archivedWallets = [];
 
   Future<void> fetchWallets() async {
     wallets = await DatabaseHelper.instance.getWalletsSummary();
+    notifyListeners();
+  }
+
+  Future<void> fetchArchivedWallets() async {
+    archivedWallets = await DatabaseHelper.instance.getArchivedWalletsSummary();
     notifyListeners();
   }
 
@@ -14,9 +20,27 @@ class WalletProvider with ChangeNotifier {
     return await DatabaseHelper.instance.getWalletById(id);
   }
 
+  /// Soft-delete: archive a wallet (can be restored later).
+  Future<void> archiveWallet(int id) async {
+    await DatabaseHelper.instance.archiveWallet(id);
+    wallets.removeWhere((w) => w.id == id);
+    notifyListeners();
+    AutoBackupService.triggerBackup();
+  }
+
+  /// Restore an archived wallet back to the active list.
+  Future<void> unarchiveWallet(int id) async {
+    await DatabaseHelper.instance.unarchiveWallet(id);
+    archivedWallets.removeWhere((w) => w.id == id);
+    notifyListeners();
+    AutoBackupService.triggerBackup();
+  }
+
+  /// Hard-delete: permanently remove a wallet from the database.
   Future<void> deleteWallet(int id) async {
     await DatabaseHelper.instance.deleteWallet(id);
     wallets.removeWhere((w) => w.id == id);
+    archivedWallets.removeWhere((w) => w.id == id);
     notifyListeners();
     AutoBackupService.triggerBackup();
   }
@@ -33,6 +57,40 @@ class WalletProvider with ChangeNotifier {
       wallets[i].orderIndex = i;
     }
 
+    await DatabaseHelper.instance.updateWalletsOrder(wallets);
+    notifyListeners();
+  }
+
+  /// Reorders a display list (which may be filtered/sorted differently from
+  /// the internal wallets list) and syncs the new orderIndex back to the
+  /// full wallets list, then persists to the database.
+  Future<void> reorderDisplayWallets(
+      List<Wallet> displayList, int oldIndex, int newIndex) async {
+    if (newIndex > oldIndex) newIndex -= 1;
+    final wallet = displayList.removeAt(oldIndex);
+    displayList.insert(newIndex, wallet);
+
+    // Assign new orderIndex to display wallets (0, 1, 2, ...)
+    for (int i = 0; i < displayList.length; i++) {
+      displayList[i].orderIndex = i;
+    }
+
+    // Sync back to the full wallets list — display wallets get their new
+    // orderIndex; non-display wallets get orderIndex starting after the
+    // display list to avoid conflicts.
+    final displayIds = displayList.map((w) => w.id).toSet();
+    int nextIndex = displayList.length;
+    for (final w in wallets) {
+      if (displayIds.contains(w.id)) {
+        final displayIdx =
+            displayList.indexWhere((d) => d.id == w.id);
+        w.orderIndex = displayList[displayIdx].orderIndex;
+      } else {
+        w.orderIndex = nextIndex++;
+      }
+    }
+
+    wallets.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
     await DatabaseHelper.instance.updateWalletsOrder(wallets);
     notifyListeners();
   }

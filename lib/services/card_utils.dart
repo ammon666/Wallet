@@ -1,3 +1,5 @@
+import 'package:wallet/l10n/app_localizations.dart';
+
 class CardUtils {
   static String? detectCardNetwork(String? cardNumber) {
     if (cardNumber == null) return null;
@@ -95,5 +97,29 @@ class CardUtils {
   static String? networkDisplayName(String? network) {
     if (network == null) return null;
     return networkDisplayNames[network] ?? network.toUpperCase();
+  }
+
+  /// Returns the LOCALIZED display name for a network key.
+  /// Uses AppLocalizations so "mastercard" → "万事达" in zh, "Mastercard" in en.
+  static String? networkDisplayNameLocalized(String? network, AppLocalizations l) {
+    if (network == null) return null;
+    switch (network) {
+      case 'visa':
+        return l.networkVisa;
+      case 'mastercard':
+        return l.networkMastercard;
+      case 'amex':
+        return l.networkAmex;
+      case 'discover':
+        return l.networkDiscover;
+      case 'rupay':
+        return l.networkRupay;
+      case 'unionpay':
+        return l.networkUnionpay;
+      case 'jcb':
+        return l.networkJcb;
+      default:
+        return network.toUpperCase();
+    }
   }
 }

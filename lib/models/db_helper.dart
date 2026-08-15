@@ -35,7 +35,7 @@ class DatabaseHelper {
     final path = join(directory.path, 'walletbox.db');
     return openDatabase(
       path,
-      version: 8,
+      version: 9,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE wallets(
@@ -57,7 +57,10 @@ class DatabaseHelper {
             color TEXT,
             frontImagePath TEXT,
             backImagePath TEXT,
-            orderIndex INTEGER DEFAULT 0
+            orderIndex INTEGER DEFAULT 0,
+            isArchived INTEGER DEFAULT 0,
+            cardCategory TEXT,
+            tags TEXT
           )
           ''');
         await db.execute(
@@ -105,6 +108,15 @@ class DatabaseHelper {
         if (oldVersion < 8) {
           await db.execute('ALTER TABLE wallets ADD COLUMN cvv TEXT;');
         }
+        if (oldVersion < 9) {
+          await db.execute(
+            'ALTER TABLE wallets ADD COLUMN isArchived INTEGER DEFAULT 0;',
+          );
+          await db.execute(
+            'ALTER TABLE wallets ADD COLUMN cardCategory TEXT;',
+          );
+          await db.execute('ALTER TABLE wallets ADD COLUMN tags TEXT;');
+        }
       },
     );
   }
@@ -138,14 +150,50 @@ class DatabaseHelper {
   }
 
   /// Lightweight query for list display — only decrypts fields needed for cards and search.
+  /// Excludes archived cards (isArchived = 0 or NULL).
   Future<List<Wallet>> getWalletsSummary() async {
     Database db = await instance.database;
     final List<Map<String, dynamic>> maps = await db.query(
       'wallets',
-      columns: ['id', 'name', 'number', 'expiry', 'network', 'issuer', 'cardtype', 'color', 'frontImagePath', 'backImagePath', 'orderIndex'],
+      columns: ['id', 'name', 'number', 'expiry', 'network', 'issuer', 'cardtype', 'color', 'frontImagePath', 'backImagePath', 'orderIndex', 'isArchived', 'cardCategory', 'tags'],
+      where: 'isArchived = 0 OR isArchived IS NULL',
       orderBy: 'orderIndex ASC',
     );
     return List.generate(maps.length, (i) => Wallet.fromEncryptedMapSummary(maps[i]));
+  }
+
+  /// Lightweight query for archived cards only.
+  Future<List<Wallet>> getArchivedWalletsSummary() async {
+    Database db = await instance.database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'wallets',
+      columns: ['id', 'name', 'number', 'expiry', 'network', 'issuer', 'cardtype', 'color', 'frontImagePath', 'backImagePath', 'orderIndex', 'isArchived', 'cardCategory', 'tags'],
+      where: 'isArchived = 1',
+      orderBy: 'orderIndex ASC',
+    );
+    return List.generate(maps.length, (i) => Wallet.fromEncryptedMapSummary(maps[i]));
+  }
+
+  /// Soft-delete: mark a wallet as archived (isArchived = 1).
+  Future<void> archiveWallet(int id) async {
+    Database db = await instance.database;
+    await db.update(
+      'wallets',
+      {'isArchived': 1},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Restore an archived wallet (isArchived = 0).
+  Future<void> unarchiveWallet(int id) async {
+    Database db = await instance.database;
+    await db.update(
+      'wallets',
+      {'isArchived': 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   /// Fetch a single wallet by ID with all fields decrypted.
