@@ -8,7 +8,6 @@ import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/models/theme_provider.dart';
 import 'package:wallet/pages/card_scanner_page.dart';
 import 'package:wallet/services/auto_backup_service.dart';
-import 'package:wallet/services/card_ocr_service.dart';
 import 'package:wallet/services/card_utils.dart';
 import 'package:wallet/services/image_service.dart';
 import 'package:wallet/widgets/color_picker.dart';

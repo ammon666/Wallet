@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:wallet/services/card_utils.dart';
 
@@ -239,7 +238,12 @@ class CardOcrService {
     // 3-digit or 4-digit runs only (Amex uses 4 on the front).
     final cvvRe = RegExp(r'\b(\d{3,4})\b');
     // Sometimes the OCR reads "CVV: 123" or "CVC 123".
-    final cvvLabelRe = RegExp(r'(?i)(?:cvv|cvc|cvv2|安全码|后三?位)\D{0,6}(\d{3,4})');
+    // NOTE: Dart RegExp does NOT support inline flags like (?i) — use the
+    // `caseSensitive: false` parameter instead. (JavaScript/Python syntax.)
+    final cvvLabelRe = RegExp(
+      r'(?:cvv|cvc|cvv2|安全码|后三?位)\D{0,6}(\d{3,4})',
+      caseSensitive: false,
+    );
     for (final line in lines) {
       final m = cvvLabelRe.firstMatch(line);
       if (m != null) return m.group(1);
@@ -296,14 +300,15 @@ class CardOcrService {
       // Cardholder label may precede the name: "Card Holder: JOHN DOE"
       String? nameOnly;
       final label =
-          RegExp(r'(?i)(card\s*holder|cardholder|name|持卡人)[:\s]+(.*)$')
+          RegExp(r'(card\s*holder|cardholder|name|持卡人)[:\s]+(.*)$',
+                  caseSensitive: false)
               .firstMatch(trimmed);
       if (label != null) {
         nameOnly = label.group(2)!.trim();
       } else {
         nameOnly = trimmed;
       }
-      nameOnly = nameOnly!.toUpperCase();
+      nameOnly = nameOnly.toUpperCase();
       if (!_nameRe.hasMatch(nameOnly)) continue;
       final tokens = nameOnly.split(RegExp(r'\s+'));
       if (tokens.length < 2) continue;
