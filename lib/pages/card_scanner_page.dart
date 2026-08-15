@@ -419,6 +419,9 @@ class _CardScannerPageState extends State<CardScannerPage> {
       case _Stage.reviewBack:
         return l.scannerTitleBack;
     }
+    // Fallback: new enum values added later, impossible today but Dart's
+    // type-system requires a non-null return for every code path.
+    return l.scannerTitleFront;
   }
 }
 
@@ -754,7 +757,7 @@ class _ErrorView extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton.tonal(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(l.cancel),
+              child: Text(l.cancelButton),
             ),
           ],
         ),
