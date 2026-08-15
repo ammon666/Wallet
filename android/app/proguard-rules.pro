@@ -24,6 +24,13 @@
 -keep class com.google.mlkit.** { *; }
 -keep class com.google.android.gms.internal.mlkit_vision_text.** { *; }
 
+# ---- flutter_credit_card_scanner ----
+# This package brings its own Java/Kotlin classes that R8 may try to
+# shrink/obfuscate. Keep the package's public API + credit_card_validator
+# transitive dependency so reflection-based model loading works.
+-keep class com.sudumtech.flutter_credit_card_scanner.** { *; }
+-keep class com.fintasys.** { *; } # credit_card_validator native classes
+
 # ---- Flutter / Dart ----
 # Flutter's own keep rules are auto-injected by the Flutter Gradle Plugin,
 # so we don't duplicate them here.

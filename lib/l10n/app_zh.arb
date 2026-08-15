@@ -541,6 +541,6 @@
   "scannerUnknownError": "未知错误",
   "scannerCameraInitFailed": "相机启动失败",
 
-  "addCardActionScan": "扫描添加银行卡",
+  "addCardActionScan": "扫描添加卡片",
   "scanCardNumberTooltip": "扫描识别卡号"
 }

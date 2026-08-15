@@ -31,8 +31,10 @@ class AddCardScreen extends StatefulWidget {
 class _AddCardScreenState extends State<AddCardScreen> {
   /// When the user taps the "scan card" entry-point (top-right of Add card
   /// screen) we run a full card scan → then REBUILD the
-  /// [CreditCardEntryForm] passing this result so every field is pre-filled
-  /// AND the front/back images are attached.
+  /// [CreditCardEntryForm] passing this result so every field is pre-filled.
+  /// NOTE: The new flutter_credit_card_scanner package does NOT return images,
+  /// only OCR'd text fields (number/expiry/holderName). Front/back images
+  /// can still be picked manually from the entry form.
   CardScannerResult? _scannerResult;
 
   Future<void> _importPkpass() async {
@@ -107,8 +109,8 @@ class _AddCardScreenState extends State<AddCardScreen> {
       ),
     );
     if (!mounted || result == null) return;
-    // OCR did not find anything at all → still show the form (let the user
-    // type it manually) but keep the cropped images as attachments.
+    // OCR may not have found every field — the entry form leaves existing
+    // controller values alone for any null field in the result.
     setState(() => _scannerResult = result);
   }
 

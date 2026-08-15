@@ -1062,92 +1062,88 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
             // Three filter dropdowns (vertical always, no horizontal scroll chips)
-            // Row 1: Network (卡组织) full-width — UnionPay first, Mastercard 中文
-            // Row 2: Issuer + Type side by side
+            // 单行布局：卡类型 | 发卡行 | 卡组织（顺序按用户要求）
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Column(
+                child: Row(
                   children: [
-                    // Row 1 — Network dropdown (full width; 银联 first; 万事达中文)
-                    _buildCompactDropdown(
-                      label: l.filterNetwork,
-                      value: _selectedFilter,
-                      items: [
-                        // Default value shows field name to be self-describing
-                        DropdownMenuItem(value: 'all', child: Text(l.filterAllNetworks)),
-                        // 银联 — always first as required
-                        DropdownMenuItem(
-                          value: 'unionpay',
-                          child: Text(CardUtils.networkDisplayNameLocalized('unionpay', l) ?? '银联'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'visa',
-                          child: Text(CardUtils.networkDisplayNameLocalized('visa', l) ?? 'VISA'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'mastercard',
-                          child: Text(CardUtils.networkDisplayNameLocalized('mastercard', l) ?? '万事达'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'amex',
-                          child: Text(CardUtils.networkDisplayNameLocalized('amex', l) ?? 'AMEX'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'discover',
-                          child: Text(CardUtils.networkDisplayNameLocalized('discover', l) ?? 'Discover'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'rupay',
-                          child: Text(CardUtils.networkDisplayNameLocalized('rupay', l) ?? 'RUPAY'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'jcb',
-                          child: Text(CardUtils.networkDisplayNameLocalized('jcb', l) ?? 'JCB'),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) setState(() => _selectedFilter = v);
-                      },
-                      isDark: isDark,
+                    // 1) 卡类型（最左）
+                    Expanded(
+                      child: _buildCompactDropdown(
+                        label: l.filterType,
+                        value: _selectedCardType,
+                        items: [
+                          DropdownMenuItem(value: 'all', child: Text(l.filterAllCardTypes)),
+                          DropdownMenuItem(value: 'credit', child: Text(l.cardCategoryCredit)),
+                          DropdownMenuItem(value: 'debit', child: Text(l.cardCategoryDebit)),
+                          DropdownMenuItem(value: 'none', child: Text(l.cardCategoryNone)),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _selectedCardType = v);
+                        },
+                        isDark: isDark,
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    // Row 2 — Issuer (left) + Card type (right) side by side
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildCompactDropdown(
-                            label: l.filterIssuer,
-                            value: _selectedIssuer,
-                            items: [
-                              DropdownMenuItem(value: 'all', child: Text(l.filterAllIssuers)),
-                              ...sortedIssuers.map((issuer) =>
-                                  DropdownMenuItem(value: issuer, child: Text(issuer))),
-                            ],
-                            onChanged: (v) {
-                              if (v != null) setState(() => _selectedIssuer = v);
-                            },
-                            isDark: isDark,
+                    const SizedBox(width: 8),
+                    // 2) 发卡行（中间）
+                    Expanded(
+                      child: _buildCompactDropdown(
+                        label: l.filterIssuer,
+                        value: _selectedIssuer,
+                        items: [
+                          DropdownMenuItem(value: 'all', child: Text(l.filterAllIssuers)),
+                          ...sortedIssuers.map((issuer) =>
+                              DropdownMenuItem(value: issuer, child: Text(issuer))),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _selectedIssuer = v);
+                        },
+                        isDark: isDark,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // 3) 卡组织（最右；银联 first; 万事达中文）
+                    Expanded(
+                      child: _buildCompactDropdown(
+                        label: l.filterNetwork,
+                        value: _selectedFilter,
+                        items: [
+                          DropdownMenuItem(value: 'all', child: Text(l.filterAllNetworks)),
+                          DropdownMenuItem(
+                            value: 'unionpay',
+                            child: Text(CardUtils.networkDisplayNameLocalized('unionpay', l) ?? '银联'),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildCompactDropdown(
-                            label: l.filterType,
-                            value: _selectedCardType,
-                            items: [
-                              DropdownMenuItem(value: 'all', child: Text(l.filterAllCardTypes)),
-                              DropdownMenuItem(value: 'credit', child: Text(l.cardCategoryCredit)),
-                              DropdownMenuItem(value: 'debit', child: Text(l.cardCategoryDebit)),
-                              DropdownMenuItem(value: 'none', child: Text(l.cardCategoryNone)),
-                            ],
-                            onChanged: (v) {
-                              if (v != null) setState(() => _selectedCardType = v);
-                            },
-                            isDark: isDark,
+                          DropdownMenuItem(
+                            value: 'visa',
+                            child: Text(CardUtils.networkDisplayNameLocalized('visa', l) ?? 'VISA'),
                           ),
-                        ),
-                      ],
+                          DropdownMenuItem(
+                            value: 'mastercard',
+                            child: Text(CardUtils.networkDisplayNameLocalized('mastercard', l) ?? '万事达'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'amex',
+                            child: Text(CardUtils.networkDisplayNameLocalized('amex', l) ?? 'AMEX'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'discover',
+                            child: Text(CardUtils.networkDisplayNameLocalized('discover', l) ?? 'Discover'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'rupay',
+                            child: Text(CardUtils.networkDisplayNameLocalized('rupay', l) ?? 'RUPAY'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'jcb',
+                            child: Text(CardUtils.networkDisplayNameLocalized('jcb', l) ?? 'JCB'),
+                          ),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _selectedFilter = v);
+                        },
+                        isDark: isDark,
+                      ),
                     ),
                   ],
                 ),

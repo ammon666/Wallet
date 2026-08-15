@@ -363,21 +363,21 @@ jobs:
       # ================================================================
       # Rename APK to a simple, self-identifying name:
       #
-      #   Format: Wallet-v{VERSION}.apk
-      #   Example: Wallet-v1.0.41.apk
+      #   Format: Wallet-v{VERSION}-{BUILD_TS}.apk
+      #   Example: Wallet-v1.0.41-20260815-143052.apk
       #
       # VERSION comes from pubspec.yaml (e.g. "version: 1.0.41+44" → 1.0.41).
-      # To release a new version, just bump the version in pubspec.yaml
-      # (1.0.41 → 1.0.42 → 1.0.43 ...) and push — the file name follows
-      # automatically.
+      # BUILD_TS is seconds-precision UTC timestamp so multiple builds of
+      # the SAME version on the same day are distinguishable by filename.
+      # This is critical for daily iterative dev cycles.
       #
       # The renamed APK is uploaded to a Draft Release below, where users
       # can download it directly WITHOUT a wrapping .zip (unlike
       # actions/upload-artifact which always zips).
       #
-      # To keep the git tag UNIQUE across re-builds of the same version,
-      # the tag carries a seconds-precision timestamp (e.g.
-      # v1.0.41-20260815-143052). The APK file name stays clean.
+      # The git tag also uses the same seconds-precision timestamp to
+      # stay unique across re-builds:
+      #   v{VERSION}-{YYYYMMDD-HHMMSS}  →  v1.0.41-20260815-143052
       # ================================================================
       - name: Rename APK with version info
         run: |
@@ -387,12 +387,14 @@ jobs:
           VERSION_CODE="${VERSION_LINE##*+}"      # 44
           BUILD_DATE=$(date -u +%Y%m%d)            # 20260815
           BUILD_DATE_ISO=$(date -u +%Y-%m-%d)      # 2026-08-15
-          BUILD_TS=$(date -u +%Y%m%d-%H%M%S)       # 20260815-143052 (tag uniqueness)
+          BUILD_TS=$(date -u +%Y%m%d-%H%M%S)       # 20260815-143052 (tag + APK uniqueness)
+          BUILD_TIME_ISO=$(date -u +%Y-%m-%d\ %H:%M:%S\ UTC) # 2026-08-15 14:30:52 UTC (for display)
           SHA7=$(git rev-parse --short=7 HEAD)     # a1b2c3d
           ARCH="arm64"
 
-          # Clean APK name — just Wallet-v1.0.41.apk
-          APK_NAME="Wallet-v${VERSION_NAME}.apk"
+          # APK name with seconds-precision timestamp. Keeps multiple builds
+          # of the same version distinct when iterating within a single day.
+          APK_NAME="Wallet-v${VERSION_NAME}-${BUILD_TS}.apk"
 
           mkdir -p build/release
           cp build/app/outputs/flutter-apk/app-release.apk "build/release/${APK_NAME}"
@@ -406,6 +408,7 @@ jobs:
             echo "BUILD_DATE=${BUILD_DATE}"
             echo "BUILD_DATE_ISO=${BUILD_DATE_ISO}"
             echo "BUILD_TS=${BUILD_TS}"
+            echo "BUILD_TIME_ISO=${BUILD_TIME_ISO}"
             echo "SHA7=${SHA7}"
             echo "ARCH=${ARCH}"
           } >> "$GITHUB_ENV"
@@ -432,25 +435,28 @@ jobs:
       #     raw — clicking the asset link downloads the .apk directly.
       #   - Draft status lets you verify the build before public release.
       #
-      # TAG STRATEGY:
-      #   v{VERSION}-{YYYYMMDD-HHMMSS}  →  v1.0.41-20260815-143052
-      #   Seconds-precision timestamp keeps the tag unique even if the
-      #   same version is re-built. The APK file name stays clean
-      #   (Wallet-v1.0.41.apk) — only the tag carries the timestamp.
+      # NAMING / TAG STRATEGY (all SECONDS-precision for per-build uniqueness):
+      #   Git tag:       v{VERSION}-{YYYYMMDD-HHMMSS}
+      #                  → v1.0.41-20260815-143052
+      #   Release name:  Wallet v{VERSION} — {YYYYMMDD HHMMSS}
+      #                  → Wallet v1.0.41 — 2026-08-15 14:30:52 UTC
+      #   APK filename:  Wallet-v{VERSION}-{YYYYMMDD-HHMMSS}.apk
+      #                  → Wallet-v1.0.41-20260815-143052.apk
+      #   Release body:  Displays full BUILD_TIME_ISO down to the second.
       # ================================================================
       - name: Create Draft Release with APK
         if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}-${{ env.BUILD_TS }}
-          name: Wallet v${{ env.VERSION_NAME }} — ${{ env.BUILD_DATE_ISO }}
+          name: Wallet v${{ env.VERSION_NAME }} — ${{ env.BUILD_TIME_ISO }}
           body: |
             ## 构建信息
 
             - **版本**: `${{ env.VERSION_NAME }}` (build `${{ env.VERSION_CODE }}`)
             - **架构**: `${{ env.ARCH }}` (arm64-v8a)
-            - **构建日期**: `${{ env.BUILD_DATE_ISO }}`
-            - **Commit**: `${{ github.sha }}`
+            - **构建时间**: `${{ env.BUILD_TIME_ISO }}`
+            - **Commit**: `${{ github.sha }}` (`${{ env.SHA7 }}`)
             - **分支**: `${{ github.ref_name }}`
             - **触发**: `${{ github.event_name }}`
 

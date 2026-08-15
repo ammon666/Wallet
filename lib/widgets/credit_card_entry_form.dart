@@ -86,40 +86,28 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     }
   }
 
-  /// Applies both OCR field values AND front/back cropped images
-  /// returned from the scanner page into the form state.
-  Future<void> _applyScanOcr(CardScannerResult r) async {
-    final tmp = Directory.systemTemp;
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    File? f;
-    File? b;
-    if (r.frontImageBytes != null) {
-      f = File('${tmp.path}/form_front_$ts.jpg');
-      await f.writeAsBytes(r.frontImageBytes!);
-    }
-    if (r.backImageBytes != null) {
-      b = File('${tmp.path}/form_back_$ts.jpg');
-      await b.writeAsBytes(r.backImageBytes!);
-    }
-    if (!mounted) return;
+  /// Applies OCR field values returned from the scanner page into the form
+  /// state. The new flutter_credit_card_scanner package returns only text
+  /// fields (number/expiry/holderName) — no images — so front/back image
+  /// picking is left to the user via the existing image picker buttons.
+  void _applyScanOcr(CardScannerResult r) {
     // Capture nullable fields into local non-null vars to avoid Dart's
     // "no promotion of nullable member variables inside closures" pitfall.
-    final o = r.ocr;
-    final number = o?.number;
-    final expiry = o?.expiry;
-    final cvv = o?.cvv;
-    final holder = o?.holderName;
-    final network = o?.network;
+    final number = r.number;
+    final expiry = r.expiry;
+    final holder = r.holderName;
     setState(() {
       if (number != null && number.isNotEmpty) {
         _numberController.text = number;
+        // Auto-detect network (visa/mastercard/...) from the scanned number.
+        final detected = CardUtils.detectCardNetwork(number);
+        if (detected != null) {
+          _network = detected;
+        }
       }
       if (expiry != null && expiry.isNotEmpty) {
         // Expiry comes back as MM/YY; the form stores MMYY (4 digits only).
         _expiryController.text = expiry.replaceAll('/', '');
-      }
-      if (cvv != null && cvv.isNotEmpty) {
-        _cvvController.text = cvv;
       }
       if (holder != null && holder.isNotEmpty) {
         // Note: the name field is user-visible label (中文). We only populate
@@ -129,11 +117,6 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
           _nameController.text = holder;
         }
       }
-      if (network != null && network.isNotEmpty) {
-        _network = network;
-      }
-      if (f != null) _frontImageFile = f;
-      if (b != null) _backImageFile = b;
     });
   }
 
@@ -141,16 +124,14 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   /// card-number TextField. Launches the scanner in number-only mode and
   /// replaces the card-number field with whatever was detected.
   Future<void> _launchNumberOnlyScan() async {
-    final result = await Navigator.push<CardScannerResult>(
+    final result = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (_) => const CardScannerPage(mode: CardScannerMode.numberOnly),
       ),
     );
-    if (!mounted || result == null) return;
-    if (result.numberOnly != null && result.numberOnly!.isNotEmpty) {
-      setState(() => _numberController.text = result.numberOnly!);
-    }
+    if (!mounted || result == null || result.isEmpty) return;
+    setState(() => _numberController.text = result);
   }
 
   void _onFieldChanged() {
