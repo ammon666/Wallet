@@ -64,26 +64,26 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      # Decode the release keystore (stored as base64 in GitHub Secrets) into
-      # android/app/release.jks, and write android/key.properties (gitignored)
-      # so Gradle can sign the release APK.
+      # Decode the release keystore (base64 in GitHub Secrets) → android/app/release.jks
+      # AND write android/key.properties (gitignored) so Gradle can sign the release APK.
       #
-      # Why Python instead of `echo $KEYSTORE_BASE64 | base64 -d`:
-      #   1) Very long base64 strings (> 10k chars) are occasionally truncated
-      #      or mangled by shell/env when passed across heredocs.
-      #   2) `echo` may interpret escape sequences (backslash chars) in the
-      #      base64 content or inject newlines.
-      # Python reads the raw env bytes, validates the decoded keystore file
-      # size, and checks the first 4 bytes match the .jks magic number
-      # (0xFEEDFEED for SUN JKS format). If any step fails, the step aborts
-      # with a clear error so we never silently sign with a 0-byte keystore.
+      # WHY PYTHON FOR EVERYTHING (not just keystore decode):
+      #   The previous version wrote key.properties with a bash heredoc (<<EOF),
+      #   which lets bash expand $VAR, `cmd`, and \x inside password values.
+      #   If KEY_PASSWORD contains e.g. "pa$$word", bash expands $$ → PID, and
+      #   the written password no longer matches the keystore →
+      #   "DerInputStream.getLength(): lengthTag=109, too big" at packageRelease.
+      #   Python reads os.environ verbatim — no shell expansion — so passwords
+      #   pass through byte-exact.
       #
-      # Passwords are passed via env (never echoed). Bash variable expansion is
-      # non-recursive, so a '$' inside a password value is written through
-      # verbatim (not re-expanded).
+      # VERIFICATION: After writing the files, we run keytool -list (verifies
+      # store password + alias) and jarsigner on a test JAR (verifies key
+      # password). This catches mismatched secrets BEFORE the 3-minute Flutter
+      # build, with a clear error message instead of a cryptic Gradle failure.
+      #
       # Local dev: place release.jks at android/app/release.jks and create
       # android/key.properties manually with the same four keys.
-      - name: Decode Keystore & Write key.properties
+      - name: Decode Keystore, Write key.properties & Verify
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -91,52 +91,161 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           python3 - <<'PY'
-          import base64, binascii, os, sys, pathlib
+          import base64, binascii, os, sys, pathlib, subprocess, tempfile, hashlib
+
+          # ================================================================
+          # 1. Decode keystore from base64 (GitHub Secret → .jks file)
+          # ================================================================
           raw = os.environ.get("KEYSTORE_BASE64", "")
           if not raw:
               sys.exit("KEYSTORE_BASE64 is empty — did you set the GitHub Secret?")
-          # Normalize: strip any whitespace / base64-wrap newlines the user may
-          # have accidentally included when pasting the secret.
+          # Strip any whitespace/newlines the user may have accidentally pasted.
           compact = "".join(raw.split())
           try:
               data = base64.b64decode(compact, validate=True)
           except binascii.Error as e:
               sys.exit(f"KEYSTORE_BASE64 is not valid base64: {e}")
           if len(data) < 100:
-              sys.exit(f"Decoded keystore is only {len(data)} bytes — expected at "
-                       "least a few hundred bytes for a real JKS. Check that the "
-                       "secret holds the FULL base64 output of release.jks.")
-          # JKS (Sun) magic number: bytes 0..3 == FE ED FE ED
+              sys.exit(f"Decoded keystore is only {len(data)} bytes — too small "
+                       "for a real JKS. Check that the secret holds the FULL "
+                       "base64 output of release.jks.")
+          # JKS (Sun) magic: bytes 0..3 == FE ED FE ED
           if data[:4] != b"\xfe\xed\xfe\xed":
               head = " ".join(f"{b:02X}" for b in data[:8])
               sys.exit(
-                  "Decoded keystore does NOT start with the JKS magic number "
-                  "(FEEDFEED). First 8 bytes: " + head + "\n"
-                  "Most likely causes:\n"
-                  "  1) You pasted a .p12 (PKCS#12) file but the JKS loader was "
-                  "used. Either regenerate as JKS with keytool -genkeypair, or "
-                  "re-encode a valid JKS.\n"
-                  "  2) The base64 string was truncated or a wrong file was "
-                  "encoded. Re-run `[Convert]::ToBase64String("
-                  "[IO.File]::ReadAllBytes('release.jks'))` on Windows or "
-                  "`base64 -w 0 release.jks` on Linux/macOS and paste the "
-                  "FULL output into KEYSTORE_BASE64 (no newlines)."
+                  "Decoded keystore does NOT start with JKS magic (FEEDFEED).\n"
+                  "First 8 bytes: " + head + "\n"
+                  "Likely causes:\n"
+                  "  1) You pasted a .p12 (PKCS#12) but Gradle loads it as JKS.\n"
+                  "     Regenerate with: keytool -genkeypair -storetype jks ...\n"
+                  "  2) The base64 was truncated or a wrong file was encoded.\n"
+                  "     Re-encode the FULL file and paste into KEYSTORE_BASE64."
               )
-          out = pathlib.Path("android/app/release.jks")
-          out.parent.mkdir(parents=True, exist_ok=True)
-          out.write_bytes(data)
-          print(f"Keystore decoded OK: {len(data)} bytes, sha256 head = "
-                f"{__import__('hashlib').sha256(data).hexdigest()[:12]}...")
-          PY
+          ks_path = pathlib.Path("android/app/release.jks")
+          ks_path.parent.mkdir(parents=True, exist_ok=True)
+          ks_path.write_bytes(data)
+          sha = hashlib.sha256(data).hexdigest()
+          print(f"✓ Keystore decoded: {len(data)} bytes, SHA-256 = {sha[:16]}...")
 
-          # Write key.properties (4 keys read directly from env).
-          cat > android/key.properties <<EOF
-          storeFile=release.jks
-          storePassword=$KEYSTORE_PASSWORD
-          keyAlias=$KEY_ALIAS
-          keyPassword=$KEY_PASSWORD
-          EOF
-          ls -l android/app/release.jks android/key.properties
+          # ================================================================
+          # 2. Read passwords from env (Python = verbatim, no shell expansion)
+          # ================================================================
+          store_pass = os.environ.get("KEYSTORE_PASSWORD", "")
+          key_alias  = os.environ.get("KEY_ALIAS", "")
+          key_pass   = os.environ.get("KEY_PASSWORD", "")
+
+          if not store_pass:
+              sys.exit("KEYSTORE_PASSWORD is empty — did you set the GitHub Secret?")
+          if not key_alias:
+              sys.exit("KEY_ALIAS is empty — did you set the GitHub Secret?")
+          if not key_pass:
+              sys.exit("KEY_PASSWORD is empty — did you set the GitHub Secret?")
+
+          # Log metadata (NOT actual values) for debugging.
+          def ws_warn(v):
+              return " ⚠ has leading/trailing whitespace!" if v != v.strip() else ""
+          print(f"  KEYSTORE_PASSWORD: {len(store_pass)} chars{ws_warn(store_pass)}")
+          print(f"  KEY_ALIAS:         '{key_alias}' ({len(key_alias)} chars)")
+          print(f"  KEY_PASSWORD:      {len(key_pass)} chars{ws_warn(key_pass)}")
+          if store_pass != store_pass.strip() or key_pass != key_pass.strip():
+              print("\n⚠ WARNING: A password has leading/trailing whitespace.")
+              print("  This usually means the secret was copy-pasted with extra")
+              print("  spaces/newlines. Go to GitHub → Settings → Secrets and")
+              print("  re-paste the password WITHOUT trailing whitespace.\n")
+
+          # ================================================================
+          # 3. Write key.properties via Python (NOT bash heredoc).
+          #    Escape backslashes for Java Properties format (\ → \\).
+          # ================================================================
+          def esc(v):
+              return v.replace("\\", "\\\\")
+          props = pathlib.Path("android/key.properties")
+          props.write_text(
+              f"storeFile=release.jks\n"
+              f"storePassword={esc(store_pass)}\n"
+              f"keyAlias={esc(key_alias)}\n"
+              f"keyPassword={esc(key_pass)}\n"
+          )
+          print(f"✓ Wrote {props}")
+
+          # ================================================================
+          # 4. Verify STORE password + alias with keytool.
+          # ================================================================
+          print("\n--- keytool: verifying store password & alias ---")
+          r = subprocess.run(
+              ["keytool", "-list",
+               "-keystore", str(ks_path),
+               "-storepass", store_pass],
+              capture_output=True, text=True
+          )
+          print(r.stdout)
+          if r.returncode != 0:
+              print(r.stderr)
+              sys.exit(
+                  "❌ keytool -list FAILED → KEYSTORE_PASSWORD is wrong.\n"
+                  "   The keystore file is valid (JKS magic OK), but the store\n"
+                  "   password doesn't match. Update the KEYSTORE_PASSWORD\n"
+                  "   GitHub Secret to the password used when creating release.jks."
+              )
+          r2 = subprocess.run(
+              ["keytool", "-list",
+               "-keystore", str(ks_path),
+               "-storepass", store_pass,
+               "-alias", key_alias],
+              capture_output=True, text=True
+          )
+          if r2.returncode != 0:
+              print(r2.stderr)
+              sys.exit(
+                  f"❌ Alias '{key_alias}' not found in keystore.\n"
+                  f"   Run this locally to list aliases:\n"
+                  f"     keytool -list -keystore release.jks -storepass <password>\n"
+                  f"   Then update the KEY_ALIAS GitHub Secret accordingly."
+              )
+          print(f"✓ Alias '{key_alias}' exists in keystore.")
+
+          # ================================================================
+          # 5. Verify KEY password by signing a throwaway test JAR.
+          #    keytool -list only checks the store password — the key
+          #    password is separate and must also be correct. jarsigner
+          #    needs BOTH, so a successful sign proves both are right.
+          # ================================================================
+          print("\n--- jarsigner: verifying key password ---")
+          with tempfile.TemporaryDirectory() as td:
+              jar_path = pathlib.Path(td) / "test.jar"
+              txt_path = pathlib.Path(td) / "test.txt"
+              txt_path.write_text("signing-test")
+              subprocess.run(
+                  ["jar", "cf", str(jar_path), "-C", td, "test.txt"],
+                  check=True, capture_output=True
+              )
+              r3 = subprocess.run(
+                  ["jarsigner",
+                   "-keystore", str(ks_path),
+                   "-storepass", store_pass,
+                   "-keypass", key_pass,
+                   str(jar_path), key_alias],
+                  capture_output=True, text=True
+              )
+              print(r3.stdout)
+              if r3.returncode != 0:
+                  print(r3.stderr)
+                  sys.exit(
+                      "❌ jarsigner FAILED → KEY_PASSWORD is wrong.\n"
+                      "   keytool -list succeeded (store password is OK), but\n"
+                      "   the KEY password doesn't match the key entry.\n"
+                      "   Common causes:\n"
+                      "     1. KEY_PASSWORD differs from what you typed at the\n"
+                      "        'Enter key password for <release>' prompt.\n"
+                      "     2. If you used the SAME password for store and key,\n"
+                      "        make sure KEY_PASSWORD and KEYSTORE_PASSWORD\n"
+                      "        have identical values in GitHub Secrets.\n"
+                      "     3. The secret has trailing whitespace/newline from\n"
+                      "        copy-paste (see the whitespace warning above)."
+                  )
+          print("✓ Key password verified — test JAR signed successfully!")
+          print("\n✅ All keystore checks passed. Ready to build.")
+          PY
 
       # Build only arm64-v8a (modern 64-bit ARM, covers 95%+ of Android phones).
       # Release build uses Dart AOT compilation (faster, smaller than debug).
