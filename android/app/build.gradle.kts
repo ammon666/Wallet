@@ -72,6 +72,23 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // Enable R8/ProGuard code shrinking & obfuscation for release
+            // builds. This reduces APK size and enables dead-code elimination.
+            //
+            // proguardFiles:
+            //   1. proguard-android-optimize.txt — AGP's default rules
+            //      (shrinking + optimization, NOT the -dontoptimize variant).
+            //   2. proguard-rules.pro — project-specific keep rules.
+            //      Currently contains -dontwarn for ML Kit's Chinese/Japanese/
+            //      Korean/Devanagari text recognizers that we don't bundle
+            //      (we only use Latin script → saves ~25 MB APK size).
+            //      WITHOUT these -dontwarn rules R8 fails with:
+            //        Missing class com.google.mlkit.vision.text.chinese.*
+            minifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
