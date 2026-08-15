@@ -84,7 +84,7 @@ android {
             //      (we only use Latin script → saves ~25 MB APK size).
             //      WITHOUT these -dontwarn rules R8 fails with:
             //        Missing class com.google.mlkit.vision.text.chinese.*
-            minifyEnabled = true
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
