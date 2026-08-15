@@ -17,12 +17,7 @@ jobs:
   build:
     name: Build Android Release APK
     runs-on: ubuntu-latest
-    env:
-      # Explicitly set PUB_CACHE so `flutter pub get` and `flutter build apk`
-      # (which internally re-runs pub get) use the SAME cache directory.
-      # Without this, the two steps may resolve to different paths, causing
-      # "No such file or directory" errors during Dart compilation.
-      PUB_CACHE: ~/.pub-cache
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -128,6 +123,13 @@ jobs:
               root = pkg.get('rootUri', '').replace('file://', '')
               if not root:
                   continue
+              # rootUri may be relative to .dart_tool/ and may contain
+              # unexpanded ~ (e.g. "../~/.pub-cache/..."). Expand ~ to
+              # the home directory, then resolve relative to .dart_tool/.
+              home = os.path.expanduser('~')
+              root = root.replace('~', home)
+              root = os.path.join('.dart_tool', root) if not os.path.isabs(root) else root
+              root = os.path.normpath(root)
               # Only check hosted packages (skip sdk + path deps)
               if not os.path.isdir(root):
                   missing.append(f"{name} -> {root}")
