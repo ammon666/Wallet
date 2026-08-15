@@ -19,18 +19,22 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Force compileSdk ≥ 35 for all Android library subprojects (Flutter plugins).
+// Force compileSdk = 37 for ALL Android library subprojects (Flutter plugins).
 //
-// WHY: Some Flutter plugins (e.g. flutter_credit_card_scanner 0.12.0) ship
-// with compileSdk=34 in their build.gradle, but their transitive dependencies
-// (google_mlkit_text_recognition, google_mlkit_commons) require compileSdk ≥ 35.
-// This causes AAR metadata check failures at build time:
-//   ":flutter_credit_card_scanner is currently compiled against android-34"
+// WHY: Flutter plugins ship with varying compileSdk values in their build.gradle:
+//   flutter_credit_card_scanner 0.12.0  → compileSdk = 34
+//   google_mlkit_text_recognition 0.15.0 → compileSdk = 36
+//   google_mlkit_commons 0.11.1          → compileSdk = 36
+// The Android Gradle Plugin's AAR metadata check requires every module to
+// have compileSdk >= the maximum among all dependencies. With the app at
+// compileSdk = 37, any plugin below 37 triggers:
+//   ":flutter_credit_card_scanner is currently compiled against android-34;
+//    however, a dependency requires compileSdk 36 or higher"
 //
-// This block transparently upgrades the plugin's compileSdk to 35 without
-// forking the plugin. Uses reflection because AGP is `apply false` in the
-// root project, so its Kotlin DSL types (LibraryExtension etc.) are not on
-// the classpath here.
+// This block unconditionally sets every plugin's compileSdk to 37 (matching
+// the app), eliminating all mismatch errors. Uses reflection because AGP
+// is `apply false` in the root project, so its Kotlin DSL types
+// (LibraryExtension etc.) are not on the classpath here.
 //
 // TIMING: We cannot use a plain `afterEvaluate` because
 //   `subprojects { evaluationDependsOn(":app") }` (see block above) forces
@@ -45,25 +49,19 @@ subprojects {
         val androidExt = extensions.findByName("android") ?: return
         try {
             val cls = androidExt.javaClass
-            val getter = cls.getMethod("getCompileSdk")
-            val current = getter.invoke(androidExt) as? Int
-            if (current == null || current < 35) {
-                try {
-                    val setter = cls.getMethod("setCompileSdk", Int::class.javaPrimitiveType)
-                    setter.invoke(androidExt, 35)
-                } catch (e: NoSuchMethodException) {
-                    val setter = cls.getMethod("setCompileSdk", Integer::class.java)
-                    setter.invoke(androidExt, 35)
-                }
-            }
+            val setter = cls.getMethod("setCompileSdk", Int::class.javaPrimitiveType)
+            setter.invoke(androidExt, 37)
         } catch (e: NoSuchMethodException) {
-            // Not an Android extension — skip
+            try {
+                val setter = cls.getMethod("setCompileSdk", Integer::class.java)
+                setter.invoke(androidExt, 37)
+            } catch (e2: NoSuchMethodException) {
+                // Not an Android extension or unsupported API — skip
+            }
         }
     }
 
     if (project.state.executed) {
-        // Project evaluation already finished (evaluationDependsOn forced it).
-        // Apply the patch right now, don't try to register another hook.
         patchCompileSdk()
     } else {
         afterEvaluate { patchCompileSdk() }

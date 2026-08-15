@@ -17,6 +17,12 @@ jobs:
   build:
     name: Build Android Release APK
     runs-on: ubuntu-latest
+    env:
+      # Explicitly set PUB_CACHE so `flutter pub get` and `flutter build apk`
+      # (which internally re-runs pub get) use the SAME cache directory.
+      # Without this, the two steps may resolve to different paths, causing
+      # "No such file or directory" errors during Dart compilation.
+      PUB_CACHE: ~/.pub-cache
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -410,66 +416,10 @@ jobs:
           print("\n✅ All keystore checks passed. Ready to build.")
           PY
 
-      # ================================================================
-      # DIAGNOSTIC: Dump pub cache state for flutter_credit_card_scanner.
-      #
-      # The build fails with "No such file or directory" for a package that
-      # `flutter pub get` claims to have downloaded. This step prints:
-      #   1. PUB_CACHE env var (pub might use a different cache than ~/.pub-cache)
-      #   2. Actual directories in the pub cache matching the package
-      #   3. The rootUri from package_config.json (where the compiler looks)
-      #   4. Whether lib/flutter_credit_card_scanner.dart exists at that path
-      #   5. The resolved version from pubspec.lock
-      #
-      # This runs RIGHT BEFORE the build — if `flutter analyze` or any other
-      # step modified package_config.json or the cache, we'll see the damage.
-      # ================================================================
-      - name: Diagnose Pub Cache State
-        run: |
-          echo "=== PUB_CACHE env ==="
-          echo "PUB_CACHE=${PUB_CACHE:-<not set>}"
-          echo "HOME=${HOME}"
-          echo ""
-          echo "=== Directories matching flutter_credit_card_scanner ==="
-          ls -la ~/.pub-cache/hosted/pub.dev/flutter_credit_card_scanner* 2>&1 || echo "(none found)"
-          echo ""
-          echo "=== package_config.json entry ==="
-          python3 - <<'PY'
-          import json, os
-          pcf = '.dart_tool/package_config.json'
-          if not os.path.exists(pcf):
-              print(f"ERROR: {pcf} does not exist!")
-              exit(0)
-          with open(pcf) as f:
-              config = json.load(f)
-          for pkg in config.get('packages', []):
-              if 'credit_card' in pkg.get('name', ''):
-                  print(f"  name:     {pkg.get('name')}")
-                  print(f"  rootUri:  {pkg.get('rootUri')}")
-                  print(f"  packageUri: {pkg.get('packageUri')}")
-                  root = pkg.get('rootUri', '').replace('file://', '')
-                  lib_file = os.path.join(root, 'lib', 'flutter_credit_card_scanner.dart')
-                  print(f"  lib file exists: {os.path.isfile(lib_file)}")
-                  print(f"  lib file path:   {lib_file}")
-                  if os.path.isdir(root):
-                      print(f"  dir listing:")
-                      for item in sorted(os.listdir(root)):
-                          print(f"    {item}")
-                  else:
-                      print(f"  ERROR: directory does not exist: {root}")
-          PY
-          echo ""
-          echo "=== pubspec.lock entry ==="
-          grep -A5 "flutter_credit_card_scanner" pubspec.lock 2>/dev/null || echo "(not in pubspec.lock)"
-
       # Build only arm64-v8a (modern 64-bit ARM, covers 95%+ of Android phones).
       # Release build uses Dart AOT compilation (faster, smaller than debug).
-      #
-      # --verbose: needed to diagnose "No such file or directory" errors where
-      # `flutter build apk` internally re-runs `flutter pub get` and may
-      # regenerate package_config.json with different paths.
       - name: Build Release APK
-        run: flutter build apk --release --target-platform android-arm64 --verbose
+        run: flutter build apk --release --target-platform android-arm64
 
       # Print the APK signing certificate fingerprints (SHA-1/SHA-256) so they
       # can be registered with app stores / 3rd-party platforms (WeChat, maps,
