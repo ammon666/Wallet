@@ -1,3 +1,4 @@
+import org.gradle.api.GradleException
 import java.util.Properties
 import java.io.FileInputStream
 
@@ -43,35 +44,50 @@ android {
 
     signingConfigs {
         create("release") {
-            // Only configure release signing when key.properties is present
-            // (it is gitignored, so CI/debug builds skip this gracefully).
+            // SAFE loading phase (no exceptions).
+            // Read values only when key.properties exists; missing fields stay
+            // null so that the actual release variant validation below can
+            // surface them with a precise GradleException.
+            // Debug builds (flutter run) never touch this signing config, so
+            // local dev without any signing keys still works.
             if (keystorePropertiesFile.exists()) {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-                storePassword = keystoreProperties["storePassword"] as String
-                // Fall back to the store password when keyPassword is absent
-                // or blank — this matches the CI workflow's store=key fallback
-                // and covers keystores that share one password for both entries.
-                val kp = keystoreProperties["keyPassword"] as? String
-                keyPassword = if (!kp.isNullOrEmpty()) kp else storePassword
-                // Explicitly set the keystore type so AGP doesn't guess from
-                // the .jks extension — the file may actually be PKCS#12.
-                keystoreProperties["storeType"]?.let { storeType = it as String }
+                val keyAliasProp = keystoreProperties["keyAlias"] as? String
+                val storeFileProp = keystoreProperties["storeFile"] as? String
+                val storePasswordProp = keystoreProperties["storePassword"] as? String
+                val keyPasswordProp = keystoreProperties["keyPassword"] as? String
+                val storeTypeProp = keystoreProperties["storeType"] as? String
+
+                if (!keyAliasProp.isNullOrBlank())       keyAlias = keyAliasProp
+                if (!storeFileProp.isNullOrBlank())       storeFile = file(storeFileProp)
+                if (!storePasswordProp.isNullOrBlank())   storePassword = storePasswordProp
+
+                // Defensive fallback: use storePassword when keyPassword is
+                // absent or blank — matches CI workflow store=key fallback and
+                // covers PKCS#12 keystores that share a single password.
+                keyPassword = if (!keyPasswordProp.isNullOrBlank()) {
+                    keyPasswordProp
+                } else if (!storePasswordProp.isNullOrBlank()) {
+                    storePasswordProp
+                } else {
+                    null
+                }
+
+                if (!storeTypeProp.isNullOrBlank())      storeType = storeTypeProp
             }
         }
     }
 
     buildTypes {
         release {
-            // When key.properties is present (CI injects it), sign with the
-            // real release keystore. When absent (local dev without signing
-            // keys), fall back to the debug signing config so that
-            // `flutter build apk --release` still works locally.
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            // Point release builds at the release signing config unconditionally.
+            // If any signing field is invalid (missing key.properties, missing
+            // keyAlias, blank password, non-existent keystore ...), the
+            // applicationVariants.all block BELOW will throw a GradleException
+            // BEFORE any task executes. This guarantees:
+            //   ✓ Debug builds are NOT affected (local dev without keys)
+            //   ✓ Release builds NEVER fall back to debug signing keys
+            //   ✓ A clear, actionable GradleException explains the issue
+            signingConfig = signingConfigs.getByName("release")
             // Enable R8/ProGuard code shrinking & obfuscation for release
             // builds. This reduces APK size and enables dead-code elimination.
             //
@@ -94,6 +110,96 @@ android {
 
     applicationVariants.all {
         val variant = this
+        val buildType = variant.buildType.name
+
+        // -------------------------------------------------------------------
+        // Hard constraint enforcement:
+        // Release builds MUST use a custom keystore (.jks/.p12) via
+        // key.properties — they MUST NOT silently fall back to the auto-
+        // generated debug.keystore. Any failure aborts with GradleException
+        // BEFORE compilation starts so the CI build fails with a clear error.
+        // -------------------------------------------------------------------
+        if (buildType == "release") {
+            val reasons = mutableListOf<String>()
+
+            if (!keystorePropertiesFile.exists()) {
+                reasons.add(
+                    "key.properties not found at " +
+                        "${keystorePropertiesFile.absolutePath}. This file is " +
+                        "gitignored and must be created locally (for dev release " +
+                        "builds) or injected by the CI workflow (from GitHub " +
+                        "Secrets: KEYSTORE_FILE encoded as base64)."
+                )
+            }
+
+            val sc = variant.signingConfig
+            if (sc == null) {
+                reasons.add(
+                    "release variant has a null signingConfig — the release " +
+                        "buildType is not wired to a signing configuration."
+                )
+            } else {
+                if (sc.name != "release") {
+                    // Paranoia check: make absolutely sure we're not signing a
+                    // release build with signingConfigs.debug (the auto-
+                    // generated one whose keystore lives in ~/.android).
+                    reasons.add(
+                        "release variant is signed by signing config named " +
+                            "'${sc.name}' instead of 'release'. Release APKs " +
+                            "must use the custom keystore from key.properties, " +
+                            "never the debug keystore from ~/.android."
+                    )
+                }
+
+                val alias = sc.keyAlias
+                if (alias.isNullOrBlank()) {
+                    reasons.add("signingConfig.keyAlias is null or blank. Check key.properties 'keyAlias' entry.")
+                }
+
+                val sf = sc.storeFile
+                if (sf == null) {
+                    reasons.add("signingConfig.storeFile is null. Check key.properties 'storeFile' entry.")
+                } else if (!sf.exists()) {
+                    reasons.add(
+                        "signingConfig.storeFile references non-existent " +
+                            "keystore: ${sf.absolutePath}. Paths are resolved " +
+                            "relative to the android/ directory of the project."
+                    )
+                }
+
+                if (sc.storePassword.isNullOrBlank()) {
+                    reasons.add("signingConfig.storePassword is null or blank. Check key.properties 'storePassword' entry.")
+                }
+
+                if (sc.keyPassword.isNullOrBlank()) {
+                    reasons.add(
+                        "signingConfig.keyPassword is null or blank even after " +
+                            "the storePassword fallback. Key entries require a " +
+                            "non-empty password."
+                    )
+                }
+            }
+
+            if (reasons.isNotEmpty()) {
+                val sb = StringBuilder()
+                sb.appendLine("============================================================")
+                sb.appendLine("[RELEASE SIGNING FAILURE] Hard constraint violation:")
+                sb.appendLine("release builds MUST use a custom keystore (.jks/.p12)")
+                sb.appendLine("and MUST NOT fall back to debug signing.")
+                sb.appendLine("------------------------------------------------------------")
+                reasons.forEachIndexed { i, r -> sb.appendLine("  ${i + 1}. $r") }
+                sb.appendLine("------------------------------------------------------------")
+                sb.appendLine("Expected key.properties format (in android/key.properties):")
+                sb.appendLine("  keyAlias=<your-key-alias>")
+                sb.appendLine("  storeFile=<absolute-or-relative-path-to-.jks-or-.p12>")
+                sb.appendLine("  storePassword=<keystore-password>")
+                sb.appendLine("  keyPassword=<optional; defaults to storePassword>")
+                sb.appendLine("  storeType=<JKS or PKCS12 (required for .p12 files)>")
+                sb.appendLine("============================================================")
+                throw GradleException(sb.toString())
+            }
+        }
+
         variant.outputs.all {
             val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
             val abiCodes = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 3)
