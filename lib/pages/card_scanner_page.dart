@@ -55,6 +55,22 @@ class CardScannerPage extends StatefulWidget {
   State<CardScannerPage> createState() => _CardScannerPageState();
 }
 
+// ---- Stage navigation (fullCard) ----
+// frontReview → backCapture → backReview → resultPop
+//
+// NOTE: This enum is declared at FILE SCOPE (not nested inside
+// _CardScannerPageState) because Dart's resolver mis-parses nested enum
+// references in switch cases and == comparisons — it treats `_Stage` as an
+// instance getter of the enclosing class instead of a type name, producing
+// "_Stage isn't defined for the type '_CardScannerPageState'" and
+// "Not a constant expression" errors. File-scope enum avoids this.
+enum _Stage {
+  captureFront,
+  reviewFront,
+  captureBack,
+  reviewBack,
+}
+
 class _CardScannerPageState extends State<CardScannerPage> {
   // ---- Camera state ----
   CameraController? _cameraController;
@@ -64,14 +80,6 @@ class _CardScannerPageState extends State<CardScannerPage> {
   String? _cameraErrorText;
   final ResolutionPreset _resolution = ResolutionPreset.high;
 
-  // ---- Stage navigation (fullCard) ----
-  // frontReview → backCapture → backReview → resultPop
-  enum _Stage {
-    captureFront,
-    reviewFront,
-    captureBack,
-    reviewBack,
-  }
   _Stage _stage = _Stage.captureFront;
 
   // ---- Current image under review (byte array after crop) ----
