@@ -31,9 +31,18 @@ subprojects {
 // forking the plugin. Uses reflection because AGP is `apply false` in the
 // root project, so its Kotlin DSL types (LibraryExtension etc.) are not on
 // the classpath here.
+//
+// TIMING: We cannot use a plain `afterEvaluate` because
+//   `subprojects { evaluationDependsOn(":app") }` (see block above) forces
+//   subproject evaluation to happen before this block's afterEvaluate hooks
+//   can be registered, resulting in:
+//     "Cannot run Project.afterEvaluate(Action) when the project is already
+//      evaluated."
+//   So we check project.state FIRST — if the project is already evaluated
+//   we run the logic synchronously; otherwise we register afterEvaluate.
 subprojects {
-    afterEvaluate {
-        val androidExt = extensions.findByName("android") ?: return@afterEvaluate
+    fun patchCompileSdk() {
+        val androidExt = extensions.findByName("android") ?: return
         try {
             val cls = androidExt.javaClass
             val getter = cls.getMethod("getCompileSdk")
@@ -50,6 +59,14 @@ subprojects {
         } catch (e: NoSuchMethodException) {
             // Not an Android extension — skip
         }
+    }
+
+    if (project.state.executed) {
+        // Project evaluation already finished (evaluationDependsOn forced it).
+        // Apply the patch right now, don't try to register another hook.
+        patchCompileSdk()
+    } else {
+        afterEvaluate { patchCompileSdk() }
     }
 }
 
