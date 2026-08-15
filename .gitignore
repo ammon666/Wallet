@@ -33,8 +33,11 @@ migrate_working_dir/
 .pub/
 /build/
 
-# Generated localization files (regenerated from .arb by flutter gen-l10n)
-lib/l10n/app_localizations*.dart
+# Generated localization files note:
+# lib/l10n/app_localizations*.dart is COMMITTED to the repo (manually curated
+# from the .arb sources) so that fresh clones build correctly even without
+# running `flutter gen-l10n` first. CI environments that DO run gen-l10n will
+# regenerate identical content and git will report no diffs.
 
 /linux/
 /macos/

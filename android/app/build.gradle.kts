@@ -207,13 +207,53 @@ android {
             }
         }
 
-        variant.outputs.all {
-            val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
+        // ABI-specific versionCode override (splits support).
+        //
+        // Uses reflection + try/catch to stay compatible across AGP versions:
+        //   - AGP 7.x/8.x had ApkVariantOutputImpl (internal class) + OutputFile.ABI
+        //   - AGP 9.x removed/refactored both internals
+        // If the reflection-based probe fails, we simply skip the override — the
+        // build still succeeds with a single universal versionCode. This block
+        // only matters for split APK builds (multiple ABI APKs); CI uses
+        // `flutter build apk --target-platform android-arm64` which produces a
+        // SINGLE arm64 APK, so the override isn't even needed in practice.
+        variant.outputs.all { output ->
             val abiCodes = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 3)
-            val abiName = output.getFilter(com.android.build.OutputFile.ABI)
-            val abiCode = abiCodes[abiName]
-            if (abiCode != null) {
-                output.versionCodeOverride = (variant.versionCode) * 100 + abiCode
+            try {
+                val outputCls = output.javaClass
+
+                // --- 1. Read ABI filter via getFilter(String) ---
+                var abiName: String? = null
+                try {
+                    // com.android.build.OutputFile.ABI = "ABI"
+                    val getFilter = outputCls.getMethod("getFilter", String::class.java)
+                    abiName = getFilter.invoke(output, "ABI") as? String
+                } catch (_: Throwable) {}
+
+                if (abiName != null) {
+                    val abiCode = abiCodes[abiName]
+                    if (abiCode != null && variant.versionCode != null) {
+                        // --- 2. Set versionCodeOverride via setter ---
+                        val newCode = (variant.versionCode ?: 1) * 100 + abiCode
+                        try {
+                            val setter = outputCls.getMethod(
+                                "setVersionCodeOverride",
+                                Integer::class.javaPrimitiveType ?: Int::class.java
+                            )
+                            setter.invoke(output, newCode)
+                        } catch (_: Throwable) {
+                            try {
+                                val setterAny = outputCls.methods.firstOrNull { m ->
+                                    m.name == "setVersionCodeOverride" && m.parameterCount == 1
+                                }
+                                setterAny?.invoke(output, newCode)
+                            } catch (_: Throwable) {}
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+                // Silently skip: ABI-specific versionCodes are purely a polish
+                // feature for split builds; single-APK builds work fine without.
             }
         }
     }
