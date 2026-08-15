@@ -67,9 +67,20 @@ jobs:
       # Decode the release keystore (stored as base64 in GitHub Secrets) into
       # android/app/release.jks, and write android/key.properties (gitignored)
       # so Gradle can sign the release APK.
-      # Secrets are passed via env (never echoed) and consumed in the heredoc.
-      # Bash variable expansion is non-recursive, so a '$' inside a password
-      # value is written through verbatim (not re-expanded).
+      #
+      # Why Python instead of `echo $KEYSTORE_BASE64 | base64 -d`:
+      #   1) Very long base64 strings (> 10k chars) are occasionally truncated
+      #      or mangled by shell/env when passed across heredocs.
+      #   2) `echo` may interpret escape sequences (backslash chars) in the
+      #      base64 content or inject newlines.
+      # Python reads the raw env bytes, validates the decoded keystore file
+      # size, and checks the first 4 bytes match the .jks magic number
+      # (0xFEEDFEED for SUN JKS format). If any step fails, the step aborts
+      # with a clear error so we never silently sign with a 0-byte keystore.
+      #
+      # Passwords are passed via env (never echoed). Bash variable expansion is
+      # non-recursive, so a '$' inside a password value is written through
+      # verbatim (not re-expanded).
       # Local dev: place release.jks at android/app/release.jks and create
       # android/key.properties manually with the same four keys.
       - name: Decode Keystore & Write key.properties
@@ -79,14 +90,53 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+          python3 - <<'PY'
+          import base64, binascii, os, sys, pathlib
+          raw = os.environ.get("KEYSTORE_BASE64", "")
+          if not raw:
+              sys.exit("KEYSTORE_BASE64 is empty — did you set the GitHub Secret?")
+          # Normalize: strip any whitespace / base64-wrap newlines the user may
+          # have accidentally included when pasting the secret.
+          compact = "".join(raw.split())
+          try:
+              data = base64.b64decode(compact, validate=True)
+          except binascii.Error as e:
+              sys.exit(f"KEYSTORE_BASE64 is not valid base64: {e}")
+          if len(data) < 100:
+              sys.exit(f"Decoded keystore is only {len(data)} bytes — expected at "
+                       "least a few hundred bytes for a real JKS. Check that the "
+                       "secret holds the FULL base64 output of release.jks.")
+          # JKS (Sun) magic number: bytes 0..3 == FE ED FE ED
+          if data[:4] != b"\xfe\xed\xfe\xed":
+              head = " ".join(f"{b:02X}" for b in data[:8])
+              sys.exit(
+                  "Decoded keystore does NOT start with the JKS magic number "
+                  "(FEEDFEED). First 8 bytes: " + head + "\n"
+                  "Most likely causes:\n"
+                  "  1) You pasted a .p12 (PKCS#12) file but the JKS loader was "
+                  "used. Either regenerate as JKS with keytool -genkeypair, or "
+                  "re-encode a valid JKS.\n"
+                  "  2) The base64 string was truncated or a wrong file was "
+                  "encoded. Re-run `[Convert]::ToBase64String("
+                  "[IO.File]::ReadAllBytes('release.jks'))` on Windows or "
+                  "`base64 -w 0 release.jks` on Linux/macOS and paste the "
+                  "FULL output into KEYSTORE_BASE64 (no newlines)."
+              )
+          out = pathlib.Path("android/app/release.jks")
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_bytes(data)
+          print(f"Keystore decoded OK: {len(data)} bytes, sha256 head = "
+                f"{__import__('hashlib').sha256(data).hexdigest()[:12]}...")
+          PY
+
+          # Write key.properties (4 keys read directly from env).
           cat > android/key.properties <<EOF
           storeFile=release.jks
           storePassword=$KEYSTORE_PASSWORD
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
           EOF
-          echo "Keystore bytes: $(wc -c < android/app/release.jks)"
+          ls -l android/app/release.jks android/key.properties
 
       # Build only arm64-v8a (modern 64-bit ARM, covers 95%+ of Android phones).
       # Release build uses Dart AOT compilation (faster, smaller than debug).
