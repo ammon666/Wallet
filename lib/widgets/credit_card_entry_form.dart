@@ -1,9 +1,7 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/db_helper.dart';
@@ -105,28 +103,35 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
       await b.writeAsBytes(r.backImageBytes!);
     }
     if (!mounted) return;
+    // Capture nullable fields into local non-null vars to avoid Dart's
+    // "no promotion of nullable member variables inside closures" pitfall.
     final o = r.ocr;
+    final number = o?.number;
+    final expiry = o?.expiry;
+    final cvv = o?.cvv;
+    final holder = o?.holderName;
+    final network = o?.network;
     setState(() {
-      if (o?.number != null && o!.number!.isNotEmpty) {
-        _numberController.text = o.number!;
+      if (number != null && number.isNotEmpty) {
+        _numberController.text = number;
       }
-      if (o?.expiry != null && o!.expiry!.isNotEmpty) {
+      if (expiry != null && expiry.isNotEmpty) {
         // Expiry comes back as MM/YY; the form stores MMYY (4 digits only).
-        _expiryController.text = o.expiry!.replaceAll('/', '');
+        _expiryController.text = expiry.replaceAll('/', '');
       }
-      if (o?.cvv != null && o!.cvv!.isNotEmpty) {
-        _cvvController.text = o.cvv!;
+      if (cvv != null && cvv.isNotEmpty) {
+        _cvvController.text = cvv;
       }
-      if (o?.holderName != null && o!.holderName!.isNotEmpty) {
+      if (holder != null && holder.isNotEmpty) {
         // Note: the name field is user-visible label (中文). We only populate
         // if existing label is empty; otherwise leave as-is. A cardholder name
         // is often Latin ("LI LEI"), not equal to the user's card label.
         if (_nameController.text.isEmpty) {
-          _nameController.text = o.holderName!;
+          _nameController.text = holder;
         }
       }
-      if (o?.network != null && o!.network!.isNotEmpty) {
-        _network = o.network!;
+      if (network != null && network.isNotEmpty) {
+        _network = network;
       }
       if (f != null) _frontImageFile = f;
       if (b != null) _backImageFile = b;

@@ -167,20 +167,20 @@ class _CardScannerPageState extends State<CardScannerPage> {
       if (!mounted) return;
 
       if (isFront) {
-        _frontCropped = crop.croppedBytes;
-        _frontCropOk = crop.cornersFound;
         setState(() {
+          _frontCropped = crop.croppedBytes;
+          _frontCropOk = crop.cornersFound;
           _stage = _Stage.reviewFront;
           _processing = false;
-          _statusText = crop.cornersFound ? '' : '';
+          _statusText = '';
         });
       } else {
-        _backCropped = crop.croppedBytes;
-        _backCropOk = crop.cornersFound;
         setState(() {
+          _backCropped = crop.croppedBytes;
+          _backCropOk = crop.cornersFound;
           _stage = _Stage.reviewBack;
           _processing = false;
-          _statusText = crop.cornersFound ? '' : '';
+          _statusText = '';
         });
       }
     } catch (e) {
@@ -224,21 +224,10 @@ class _CardScannerPageState extends State<CardScannerPage> {
       _statusText = l.scannerOcrInProgress;
     });
     try {
-      final input = InputImage.fromBytes(
-        bytes: frontBytes,
-        metadata: const InputImageMetadata(
-          // We don't know the exact size after crop here; 8bpc RGBA is a
-          // pragmatic default. For number-only recognition the inputImage
-          // helper fromFile() below is more reliable but we already have the
-          // bytes in RAM so we use a tiny temp file on disk:
-          size: Size(1200, 750),
-          rotation: InputImageRotation.rotation0deg,
-          format: InputImageFormat.nv21,
-        ),
-      );
-      // Discard the dummy-constructed one and use a real file path approach
-      // (InputImage.fromBytes without perfect metadata can crash some ML Kit
-      // builds; temp file avoids the whole issue).
+      // Write the cropped JPEG to a temp file and let ML Kit read it
+      // directly via fromFilePath — this avoids the fragile
+      // InputImage.fromBytes metadata (size / format / rotation) that we
+      // don't reliably know after perspective warping.
       final tmp = File(
           '${Directory.systemTemp.path}/scan_${DateTime.now().millisecondsSinceEpoch}.jpg');
       await tmp.writeAsBytes(frontBytes);
@@ -464,7 +453,6 @@ class _CaptureView extends StatelessWidget {
         CustomPaint(
           size: media,
           painter: _CutoutPainter(
-            context: context,
             cardRatio: 3.375 / 2.125,
             isNumberOnly: isNumberOnly,
           ),
@@ -561,12 +549,10 @@ class _CaptureView extends StatelessWidget {
 }
 
 class _CutoutPainter extends CustomPainter {
-  final BuildContext context;
   final double cardRatio;
   final bool isNumberOnly;
 
   _CutoutPainter({
-    required this.context,
     required this.cardRatio,
     required this.isNumberOnly,
   });

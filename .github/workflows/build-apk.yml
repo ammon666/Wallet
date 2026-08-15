@@ -64,6 +64,34 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
+      # Generate localization code (app_localizations*.dart). These files are
+      # gitignored (see .gitignore) so they MUST be regenerated in CI before
+      # analyze/build — otherwise flutter analyze reports hundreds of false
+      # "AppLocalizations not found" errors.
+      - name: Generate Localizations
+        run: flutter gen-l10n
+
+      # ================================================================
+      # Static analysis: surfaces type errors, unused imports, deprecated
+      # APIs, etc. WITHOUT compiling the app. Much faster than a full APK
+      # build (seconds vs minutes) and catches the vast majority of code
+      # issues. This is the local-dev replacement for `flutter analyze` when
+      # you don't have the Flutter SDK installed on your machine.
+      #
+      # NON-BLOCKING (continue-on-error: true):
+      #   `flutter analyze` exits non-zero on ANY issue — including style
+      #   lints (info/warning level) that don't affect compilation. We don't
+      #   want a missing docstring to block the APK build. The full report
+      #   is printed to the Actions log so you can review issues at leisure.
+      #
+      #   If you want CI to FAIL on analyze issues, remove continue-on-error.
+      #   To run the same check locally (once Flutter is installed):
+      #     cd <repo> && flutter pub get && flutter gen-l10n && flutter analyze
+      # ================================================================
+      - name: Run Flutter Analyze
+        continue-on-error: true
+        run: flutter analyze
+
       # Decode the release keystore (base64 in GitHub Secrets) → android/app/release.jks
       # AND write android/key.properties (gitignored) so Gradle can sign the release APK.
       #

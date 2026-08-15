@@ -73,8 +73,8 @@ class CardOcrService {
   /// Used by the "scan button next to the card number field" entry point.
   Future<String?> recognizeCardNumberOnly(
       InputImage inputImage) async {
-    final result = await _safeRun(inputImage);
-    final candidates = result._extractCardNumbers();
+    final lines = await _allLines(inputImage);
+    final candidates = _extractCardNumbersFromLines(lines);
     return candidates.isEmpty ? null : candidates.first;
   }
 
@@ -147,16 +147,10 @@ class CardOcrService {
 
   // ---- Number extraction ----
 
-  static final _digitOnlyRe = RegExp(r'[0-9]+');
   static final _splitToChunks4 =
       RegExp(r'[0-9]{4}[\s\-._·]?[0-9]{4}[\s\-._·]?[0-9]{4}[\s\-._·]?[0-9]{1,7}');
   static final _amexRe =
       RegExp(r'3[47][0-9]{2}[\s\-._·]?[0-9]{6}[\s\-._·]?[0-9]{5}');
-
-  List<String> _extractCardNumbers() {
-    // Placeholder (used only if someone else calls the old API)
-    return [];
-  }
 
   static List<String> _extractCardNumbersFromLines(List<String> lines) {
     final Set<String> candidates = {};

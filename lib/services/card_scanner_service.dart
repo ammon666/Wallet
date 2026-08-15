@@ -89,23 +89,28 @@ class CardScannerService {
         _expandQuadBy(quad, w, h, _computePaddingPx(w, h));
 
     // --- Step 4: Perspective warp to an upright standard-card rectangle. ---
+    // image 4.x does NOT have copyPerspective — use copyRectify instead.
+    // copyRectify maps a quadrilateral in the source image to fill an
+    // output image (provided via toImage). It accepts the four source
+    // corners as named params topLeft / topRight / bottomLeft / bottomRight.
     final int outW = _outputLongSide;
     final int outH = (outW / _targetAspect).round();
-    final img.Image cropped = img.copyPerspective(
+
+    // expandedQuad is [TL, TR, BR, BL] (output of _orderCorners).
+    // Map each detected corner back to the ORIGINAL image coordinate space.
+    img.Point mapToOriginal(img.Point p) => img.Point(
+          p.x * origW / w,
+          p.y * origH / h,
+        );
+
+    final img.Image cropped = img.copyRectify(
       decoded, // warp from the ORIGINAL (higher-res) image, not working copy
-      destinationCorners: [
-        img.Point(0, 0),
-        img.Point(outW - 1, 0),
-        img.Point(outW - 1, outH - 1),
-        img.Point(0, outH - 1),
-      ],
-      // Map detected points back to original image coordinate space.
-      sourceCorners: expandedQuad
-          .map((p) => img.Point(
-                (p.x * origW / w).round(),
-                (p.y * origH / h).round(),
-              ))
-          .toList(),
+      topLeft: mapToOriginal(expandedQuad[0]),
+      topRight: mapToOriginal(expandedQuad[1]),
+      bottomRight: mapToOriginal(expandedQuad[2]),
+      bottomLeft: mapToOriginal(expandedQuad[3]),
+      interpolation: img.Interpolation.linear,
+      toImage: img.Image(width: outW, height: outH),
     );
 
     return CardCropResult(
@@ -150,7 +155,8 @@ class CardScannerService {
   /// without crossing the image boundaries.
   static List<img.Point> _expandQuadBy(
       List<img.Point> quad, int w, int h, int padPx) {
-    // Compute centroid of the 4 corners.
+    // Compute centroid of the 4 corners. Point.x/y are `num`, so accumulate
+    // as double (p.x.toDouble()) to keep math typed as double.
     double cx = 0, cy = 0;
     for (final p in quad) {
       cx += p.x;
@@ -160,15 +166,18 @@ class CardScannerService {
     cy /= 4;
 
     return quad.map((p) {
-      // Unit vector from centroid → corner.
-      final double dx = p.x - cx;
-      final double dy = p.y - cy;
+      // Unit vector from centroid → corner. Convert p.x / p.y to double
+      // first to avoid "num cannot be assigned to double" compile errors.
+      final double px = p.x.toDouble();
+      final double py = p.y.toDouble();
+      final double dx = px - cx;
+      final double dy = py - cy;
       final double len = math.sqrt(dx * dx + dy * dy) + 1e-9;
       final double nx = dx / len;
       final double ny = dy / len;
       return img.Point(
-        (p.x + nx * padPx).round().clamp(0, w - 1),
-        (p.y + ny * padPx).round().clamp(0, h - 1),
+        (px + nx * padPx).round().clamp(0, w - 1),
+        (py + ny * padPx).round().clamp(0, h - 1),
       );
     }).toList();
   }
@@ -405,8 +414,10 @@ class CardScannerService {
   /// left). The perspective warp function above depends on this order.
   static List<img.Point> _orderCorners(List<img.Point> p) {
     assert(p.length == 4);
-    final sums = List<int>.generate(4, (i) => p[i].x + p[i].y);
-    final diffs = List<int>.generate(4, (i) => p[i].x - p[i].y);
+    // Point.x and Point.y are `num` in image 4.x — must call toInt() to
+    // satisfy List<int>.generate's return type.
+    final sums = List<int>.generate(4, (i) => (p[i].x + p[i].y).toInt());
+    final diffs = List<int>.generate(4, (i) => (p[i].x - p[i].y).toInt());
     final tl = p[sums.indexOf(sums.reduce(math.min))];
     final br = p[sums.indexOf(sums.reduce(math.max))];
     final tr = p[diffs.indexOf(diffs.reduce(math.max))];
