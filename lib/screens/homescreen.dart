@@ -23,6 +23,7 @@ import '../pages/walletdetails.dart';
 import 'package:wallet/widgets/identity_card_widget.dart';
 import 'package:wallet/screens/identity_card_details_screen.dart';
 import 'package:wallet/services/auto_backup_service.dart';
+import 'package:wallet/services/card_utils.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 
 /// Smooth route builder — used across the app for premium transitions
@@ -706,6 +707,36 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
+          if (effectiveIndex == 0)
+            Container(
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withValues(alpha: 0.078) : Colors.black.withValues(alpha: 0.051),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: IconButton(
+                icon: Icon(
+                  _showArchived ? Icons.inventory_2 : Icons.inventory_2_outlined,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+                tooltip: _showArchived ? l.activeView : l.archivedView,
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  final nextArchived = !_showArchived;
+                  setState(() {
+                    _showArchived = nextArchived;
+                    _selectedFilter = 'all';
+                    _selectedIssuer = 'all';
+                    _selectedCardType = 'all';
+                  });
+                  if (nextArchived) {
+                    context.read<WalletProvider>().fetchArchivedWallets();
+                  } else {
+                    context.read<WalletProvider>().fetchWallets();
+                  }
+                },
+              ),
+            ),
           Container(
             margin: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -914,13 +945,9 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, provider, child) {
         final wallets = _showArchived ? provider.archivedWallets : provider.wallets;
 
-        if (wallets.isEmpty) {
-          return _buildEmptyState(
-            context,
-            _showArchived ? l.noArchivedCards : l.emptyPayments,
-          );
-        }
-
+        // Always compute filters so the dropdown UI can be rendered even when
+        // the wallet list is empty (prevents the "filter bar disappearing,
+        // cannot switch back from archived view" bug).
         // 1. Search filter
         final List<Wallet> searchedWallets = _searchQuery.isEmpty
             ? wallets
@@ -1033,66 +1060,59 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-                        // Active / Archived view toggle
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: SegmentedButton<bool>(
-                  segments: [
-                    ButtonSegment<bool>(value: false, label: Text(l.activeView)),
-                    ButtonSegment<bool>(value: true, label: Text(l.archivedView)),
-                  ],
-                  showSelectedIcon: false,
-                  selected: <bool>{_showArchived},
-                  onSelectionChanged: (Set<bool> newSelection) {
-                    HapticFeedback.selectionClick();
-                    final value = newSelection.first;
-                    setState(() {
-                      _showArchived = value;
-                      _selectedFilter = 'all';
-                      _selectedIssuer = 'all';
-                      _selectedCardType = 'all';
-                    });
-                    if (value) {
-                      context.read<WalletProvider>().fetchArchivedWallets();
-                    } else {
-                      context.read<WalletProvider>().fetchWallets();
-                    }
-                  },
-                ),
-              ),
-            ),
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
-            // Compact filter row: network chips + issuer dropdown + category dropdown
+            // Three filter dropdowns (vertical always, no horizontal scroll chips)
+            // Row 1: Network (卡组织) full-width — UnionPay first, Mastercard 中文
+            // Row 2: Issuer + Type side by side
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Column(
                   children: [
-                    // Network chips (compact, horizontal scroll)
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SegmentedButton<String>(
-                        segments: [
-                          ButtonSegment<String>(value: 'all', label: Text(l.filterAll)),
-                          ButtonSegment<String>(value: 'visa', label: const Text('VISA')),
-                          ButtonSegment<String>(value: 'mastercard', label: const Text('MC')),
-                          ButtonSegment<String>(value: 'unionpay', label: const Text('银联')),
-                          ButtonSegment<String>(value: 'amex', label: const Text('AMEX')),
-                          ButtonSegment<String>(value: 'discover', label: const Text('DISC')),
-                          ButtonSegment<String>(value: 'rupay', label: const Text('RUPAY')),
-                          ButtonSegment<String>(value: 'jcb', label: const Text('JCB')),
-                        ],
-                        showSelectedIcon: false,
-                        selected: <String>{_selectedFilter},
-                        onSelectionChanged: (Set<String> newSelection) {
-                          HapticFeedback.selectionClick();
-                          setState(() => _selectedFilter = newSelection.first);
-                        },
-                      ),
+                    // Row 1 — Network dropdown (full width; 银联 first; 万事达中文)
+                    _buildCompactDropdown(
+                      label: l.filterNetwork,
+                      value: _selectedFilter,
+                      items: [
+                        // Default value shows field name to be self-describing
+                        DropdownMenuItem(value: 'all', child: Text(l.filterAllNetworks)),
+                        // 银联 — always first as required
+                        DropdownMenuItem(
+                          value: 'unionpay',
+                          child: Text(CardUtils.networkDisplayNameLocalized('unionpay', l) ?? '银联'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'visa',
+                          child: Text(CardUtils.networkDisplayNameLocalized('visa', l) ?? 'VISA'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'mastercard',
+                          child: Text(CardUtils.networkDisplayNameLocalized('mastercard', l) ?? '万事达'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'amex',
+                          child: Text(CardUtils.networkDisplayNameLocalized('amex', l) ?? 'AMEX'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'discover',
+                          child: Text(CardUtils.networkDisplayNameLocalized('discover', l) ?? 'Discover'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'rupay',
+                          child: Text(CardUtils.networkDisplayNameLocalized('rupay', l) ?? 'RUPAY'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'jcb',
+                          child: Text(CardUtils.networkDisplayNameLocalized('jcb', l) ?? 'JCB'),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _selectedFilter = v);
+                      },
+                      isDark: isDark,
                     ),
                     const SizedBox(height: 8),
-                    // Issuer + Category dropdowns side by side
+                    // Row 2 — Issuer (left) + Card type (right) side by side
                     Row(
                       children: [
                         Expanded(
@@ -1100,7 +1120,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             label: l.filterIssuer,
                             value: _selectedIssuer,
                             items: [
-                              DropdownMenuItem(value: 'all', child: Text(l.filterAll)),
+                              DropdownMenuItem(value: 'all', child: Text(l.filterAllIssuers)),
                               ...sortedIssuers.map((issuer) =>
                                   DropdownMenuItem(value: issuer, child: Text(issuer))),
                             ],
@@ -1116,7 +1136,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             label: l.filterType,
                             value: _selectedCardType,
                             items: [
-                              DropdownMenuItem(value: 'all', child: Text(l.filterAll)),
+                              DropdownMenuItem(value: 'all', child: Text(l.filterAllCardTypes)),
                               DropdownMenuItem(value: 'credit', child: Text(l.cardCategoryCredit)),
                               DropdownMenuItem(value: 'debit', child: Text(l.cardCategoryDebit)),
                               DropdownMenuItem(value: 'none', child: Text(l.cardCategoryNone)),
@@ -1134,8 +1154,19 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
-            // Grouped cards list
-            if (items.isEmpty)
+            // If wallets list is totally empty (no cards at all) — show the big
+            // empty placeholder WITH its icon, so the user is never stuck without
+            // a way to navigate (filters are still visible above).
+            if (wallets.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _buildEmptyState(
+                  context,
+                  _showArchived ? l.noArchivedCards : l.emptyPayments,
+                ),
+              )
+            // Cards exist, but after applying search+filters nothing matches.
+            else if (items.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(48.0),
@@ -1149,6 +1180,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               )
+            // Everything good — show the grouped, reorderable cards list.
             else
               SliverReorderableList(
                 itemCount: items.length,

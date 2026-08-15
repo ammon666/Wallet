@@ -172,9 +172,7 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Text(
-                          widget.isMasked
-                              ? "••/••"
-                              : _formatExpiry(widget.wallet.expiry),
+                          _formatExpiry(widget.wallet.expiry),
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
