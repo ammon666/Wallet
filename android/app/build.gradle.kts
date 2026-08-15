@@ -139,18 +139,6 @@ android {
                         "buildType is not wired to a signing configuration."
                 )
             } else {
-                if (sc.name != "release") {
-                    // Paranoia check: make absolutely sure we're not signing a
-                    // release build with signingConfigs.debug (the auto-
-                    // generated one whose keystore lives in ~/.android).
-                    reasons.add(
-                        "release variant is signed by signing config named " +
-                            "'${sc.name}' instead of 'release'. Release APKs " +
-                            "must use the custom keystore from key.properties, " +
-                            "never the debug keystore from ~/.android."
-                    )
-                }
-
                 val alias = sc.keyAlias
                 if (alias.isNullOrBlank()) {
                     reasons.add("signingConfig.keyAlias is null or blank. Check key.properties 'keyAlias' entry.")
@@ -165,6 +153,25 @@ android {
                             "keystore: ${sf.absolutePath}. Paths are resolved " +
                             "relative to the android/ directory of the project."
                     )
+                } else {
+                    // Paranoia check: make absolutely sure we're not signing a
+                    // release build with the auto-generated debug.keystore
+                    // (lives in ~/.android/debug.keystore). This catches the
+                    // case where someone wired signingConfigs.debug into the
+                    // release buildType, or pointed storeFile at debug.keystore
+                    // manually. Note: SigningConfig.name is not available on
+                    // AGP 9.0+ (android.newDsl=true), so we check the file path
+                    // instead — same protective effect, API-stable.
+                    val ksPath = sf.absolutePath.lowercase()
+                    if (ksPath.endsWith("debug.keystore") || ksPath.contains("/.android/")) {
+                        reasons.add(
+                            "signingConfig.storeFile points to a debug " +
+                                "keystore: ${sf.absolutePath}. Release APKs " +
+                                "MUST use a custom .jks/.p12 keystore from " +
+                                "key.properties, NEVER the auto-generated " +
+                                "debug.keystore from ~/.android."
+                        )
+                    }
                 }
 
                 if (sc.storePassword.isNullOrBlank()) {
