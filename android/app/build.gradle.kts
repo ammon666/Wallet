@@ -103,4 +103,12 @@ dependencies {
     // BiometricPrompt with DEVICE_CREDENTIAL-only authenticator for PIN/password
     // verification (used by the "Delete all data" flow to force PIN, not fingerprint).
     implementation("androidx.biometric:biometric:1.1.0")
+
+    // Google ML Kit Text Recognition (BUNDLED model — 100% offline, never
+    // downloads / uploads). This model recognises digits + Latin script.
+    // Used to read bank card numbers (卡号), expiry dates, CVV, and cardholder
+    // name on-device. No INTERNET permission required.
+    // Chinese model excluded: card fields are digits/Latin only, which saves
+    // ~25 MB of APK size.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }

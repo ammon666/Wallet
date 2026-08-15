@@ -1,22 +1,36 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/models/theme_provider.dart';
+import 'package:wallet/pages/card_scanner_page.dart';
+import 'package:wallet/services/auto_backup_service.dart';
+import 'package:wallet/services/card_ocr_service.dart';
 import 'package:wallet/services/card_utils.dart';
 import 'package:wallet/services/image_service.dart';
-import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/widgets/color_picker.dart';
 import 'package:wallet/widgets/form_section.dart';
 import 'package:wallet/widgets/glass_credit_card.dart';
 import 'package:wallet/widgets/image_picker_widget.dart';
-import 'package:wallet/l10n/app_localizations.dart';
 
 class CreditCardEntryForm extends StatefulWidget {
   final String? initialColor;
-  const CreditCardEntryForm({super.key, this.initialColor});
+
+  /// Populated by AddCardScreen when the user chooses "scan to add a card"
+  /// entry-point. Contains the OCR parse + both cropped JPEGs.
+  /// We read it in [initState] to pre-fill all fields.
+  final CardScannerResult? initialScanResult;
+
+  const CreditCardEntryForm({
+    super.key,
+    this.initialColor,
+    this.initialScanResult,
+  });
 
   @override
   State<CreditCardEntryForm> createState() => _CreditCardEntryFormState();
@@ -63,6 +77,76 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
         _formKey.currentState?.validate();
       }
     });
+
+    // If the caller pushed the Add Card screen WITH a pre-performed scan
+    // result (entry point "scan to add card"), apply it now.
+    final pre = widget.initialScanResult;
+    if (pre != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _applyScanOcr(pre);
+      });
+    }
+  }
+
+  /// Applies both OCR field values AND front/back cropped images
+  /// returned from the scanner page into the form state.
+  Future<void> _applyScanOcr(CardScannerResult r) async {
+    final tmp = Directory.systemTemp;
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    File? f;
+    File? b;
+    if (r.frontImageBytes != null) {
+      f = File('${tmp.path}/form_front_$ts.jpg');
+      await f.writeAsBytes(r.frontImageBytes!);
+    }
+    if (r.backImageBytes != null) {
+      b = File('${tmp.path}/form_back_$ts.jpg');
+      await b.writeAsBytes(r.backImageBytes!);
+    }
+    if (!mounted) return;
+    final o = r.ocr;
+    setState(() {
+      if (o?.number != null && o!.number!.isNotEmpty) {
+        _numberController.text = o.number!;
+      }
+      if (o?.expiry != null && o!.expiry!.isNotEmpty) {
+        // Expiry comes back as MM/YY; the form stores MMYY (4 digits only).
+        _expiryController.text = o.expiry!.replaceAll('/', '');
+      }
+      if (o?.cvv != null && o!.cvv!.isNotEmpty) {
+        _cvvController.text = o.cvv!;
+      }
+      if (o?.holderName != null && o!.holderName!.isNotEmpty) {
+        // Note: the name field is user-visible label (中文). We only populate
+        // if existing label is empty; otherwise leave as-is. A cardholder name
+        // is often Latin ("LI LEI"), not equal to the user's card label.
+        if (_nameController.text.isEmpty) {
+          _nameController.text = o.holderName!;
+        }
+      }
+      if (o?.network != null && o!.network!.isNotEmpty) {
+        _network = o.network!;
+      }
+      if (f != null) _frontImageFile = f;
+      if (b != null) _backImageFile = b;
+    });
+  }
+
+  /// Entry-point 2: "scan just the card number" small button next to the
+  /// card-number TextField. Launches the scanner in number-only mode and
+  /// replaces the card-number field with whatever was detected.
+  Future<void> _launchNumberOnlyScan() async {
+    final result = await Navigator.push<CardScannerResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CardScannerPage(mode: CardScannerMode.numberOnly),
+      ),
+    );
+    if (!mounted || result == null) return;
+    if (result.numberOnly != null && result.numberOnly!.isNotEmpty) {
+      setState(() => _numberController.text = result.numberOnly!);
+    }
   }
 
   void _onFieldChanged() {
@@ -235,22 +319,37 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                       final detectedNetwork = CardUtils.detectCardNetwork(
                         _numberController.text,
                       );
-                      if (detectedNetwork == null ||
-                          _numberController.text.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Text(
-                          detectedNetwork.toUpperCase(),
-                          style: TextStyle(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.702)
-                                : Colors.black.withValues(alpha: 0.702),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Entry point 2: Scan card number
+                          IconButton(
+                            tooltip: l.scanCardNumberTooltip,
+                            icon: Icon(
+                              Icons.center_focus_strong_rounded,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.78)
+                                  : Colors.black.withValues(alpha: 0.70),
+                            ),
+                            onPressed: _launchNumberOnlyScan,
                           ),
-                        ),
+                          // Network badge (hidden until filled)
+                          if (detectedNetwork != null &&
+                              _numberController.text.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 12),
+                              child: Text(
+                                detectedNetwork.toUpperCase(),
+                                style: TextStyle(
+                                  color: isDark
+                                      ? Colors.white.withValues(alpha: 0.702)
+                                      : Colors.black.withValues(alpha: 0.702),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                        ],
                       );
                     },
                   ),
