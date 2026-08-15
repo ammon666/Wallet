@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_credit_card_scanner/flutter_credit_card_scanner.dart';
+import 'package:flutter_credit_card_scanner/credit_card_scanner.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 
 /// Modes the scanner page can run in.

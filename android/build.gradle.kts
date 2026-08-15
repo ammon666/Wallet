@@ -19,7 +19,7 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Force compileSdk = 37 for ALL Android library subprojects (Flutter plugins).
+// Force compileSdk = 36 for ALL Android library subprojects (Flutter plugins).
 //
 // WHY: Flutter plugins ship with varying compileSdk values in their build.gradle:
 //   flutter_credit_card_scanner 0.12.0  → compileSdk = 34
@@ -27,12 +27,12 @@ subprojects {
 //   google_mlkit_commons 0.11.1          → compileSdk = 36
 // The Android Gradle Plugin's AAR metadata check requires every module to
 // have compileSdk >= the maximum among all dependencies. With the app at
-// compileSdk = 37, any plugin below 37 triggers:
+// flutter.compileSdkVersion (36), any plugin below 36 triggers:
 //   ":flutter_credit_card_scanner is currently compiled against android-34;
 //    however, a dependency requires compileSdk 36 or higher"
 //
-// This block unconditionally sets every plugin's compileSdk to 37 (matching
-// the app), eliminating all mismatch errors. Uses reflection because AGP
+// This block unconditionally sets every plugin's compileSdk to 36 (matching
+// Flutter's default), eliminating all mismatch errors. Uses reflection because AGP
 // is `apply false` in the root project, so its Kotlin DSL types
 // (LibraryExtension etc.) are not on the classpath here.
 //
@@ -50,11 +50,11 @@ subprojects {
         val cls = androidExt.javaClass
         try {
             val setter = cls.getMethod("setCompileSdk", Int::class.javaPrimitiveType)
-            setter.invoke(androidExt, 37)
+            setter.invoke(androidExt, 36)
         } catch (e: NoSuchMethodException) {
             try {
                 val setter = cls.getMethod("setCompileSdk", Integer::class.java)
-                setter.invoke(androidExt, 37)
+                setter.invoke(androidExt, 36)
             } catch (e2: NoSuchMethodException) {
                 // Not an Android extension or unsupported API — skip
             }

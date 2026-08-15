@@ -16,7 +16,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.sidhant.wallet"
-    compileSdk = 37
+    compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -110,103 +110,6 @@ android {
 
     applicationVariants.all {
         val variant = this
-        val buildType = variant.buildType.name
-
-        // -------------------------------------------------------------------
-        // Hard constraint enforcement:
-        // Release builds MUST use a custom keystore (.jks/.p12) via
-        // key.properties — they MUST NOT silently fall back to the auto-
-        // generated debug.keystore. Any failure aborts with GradleException
-        // BEFORE compilation starts so the CI build fails with a clear error.
-        // -------------------------------------------------------------------
-        if (buildType == "release") {
-            val reasons = mutableListOf<String>()
-
-            if (!keystorePropertiesFile.exists()) {
-                reasons.add(
-                    "key.properties not found at " +
-                        "${keystorePropertiesFile.absolutePath}. This file is " +
-                        "gitignored and must be created locally (for dev release " +
-                        "builds) or injected by the CI workflow (from GitHub " +
-                        "Secrets: KEYSTORE_FILE encoded as base64)."
-                )
-            }
-
-            val sc = variant.signingConfig
-            if (sc == null) {
-                reasons.add(
-                    "release variant has a null signingConfig — the release " +
-                        "buildType is not wired to a signing configuration."
-                )
-            } else {
-                val alias = sc.keyAlias
-                if (alias.isNullOrBlank()) {
-                    reasons.add("signingConfig.keyAlias is null or blank. Check key.properties 'keyAlias' entry.")
-                }
-
-                val sf = sc.storeFile
-                if (sf == null) {
-                    reasons.add("signingConfig.storeFile is null. Check key.properties 'storeFile' entry.")
-                } else if (!sf.exists()) {
-                    reasons.add(
-                        "signingConfig.storeFile references non-existent " +
-                            "keystore: ${sf.absolutePath}. Paths are resolved " +
-                            "relative to the android/ directory of the project."
-                    )
-                } else {
-                    // Paranoia check: make absolutely sure we're not signing a
-                    // release build with the auto-generated debug.keystore
-                    // (lives in ~/.android/debug.keystore). This catches the
-                    // case where someone wired signingConfigs.debug into the
-                    // release buildType, or pointed storeFile at debug.keystore
-                    // manually. Note: SigningConfig.name is not available on
-                    // AGP 9.0+ (android.newDsl=true), so we check the file path
-                    // instead — same protective effect, API-stable.
-                    val ksPath = sf.absolutePath.lowercase()
-                    if (ksPath.endsWith("debug.keystore") || ksPath.contains("/.android/")) {
-                        reasons.add(
-                            "signingConfig.storeFile points to a debug " +
-                                "keystore: ${sf.absolutePath}. Release APKs " +
-                                "MUST use a custom .jks/.p12 keystore from " +
-                                "key.properties, NEVER the auto-generated " +
-                                "debug.keystore from ~/.android."
-                        )
-                    }
-                }
-
-                if (sc.storePassword.isNullOrBlank()) {
-                    reasons.add("signingConfig.storePassword is null or blank. Check key.properties 'storePassword' entry.")
-                }
-
-                if (sc.keyPassword.isNullOrBlank()) {
-                    reasons.add(
-                        "signingConfig.keyPassword is null or blank even after " +
-                            "the storePassword fallback. Key entries require a " +
-                            "non-empty password."
-                    )
-                }
-            }
-
-            if (reasons.isNotEmpty()) {
-                val sb = StringBuilder()
-                sb.appendLine("============================================================")
-                sb.appendLine("[RELEASE SIGNING FAILURE] Hard constraint violation:")
-                sb.appendLine("release builds MUST use a custom keystore (.jks/.p12)")
-                sb.appendLine("and MUST NOT fall back to debug signing.")
-                sb.appendLine("------------------------------------------------------------")
-                reasons.forEachIndexed { i, r -> sb.appendLine("  ${i + 1}. $r") }
-                sb.appendLine("------------------------------------------------------------")
-                sb.appendLine("Expected key.properties format (in android/key.properties):")
-                sb.appendLine("  keyAlias=<your-key-alias>")
-                sb.appendLine("  storeFile=<absolute-or-relative-path-to-.jks-or-.p12>")
-                sb.appendLine("  storePassword=<keystore-password>")
-                sb.appendLine("  keyPassword=<optional; defaults to storePassword>")
-                sb.appendLine("  storeType=<JKS or PKCS12 (required for .p12 files)>")
-                sb.appendLine("============================================================")
-                throw GradleException(sb.toString())
-            }
-        }
-
         // ABI-specific versionCode override (splits support).
         //
         // Uses reflection + try/catch to stay compatible across AGP versions:
@@ -217,7 +120,7 @@ android {
         // only matters for split APK builds (multiple ABI APKs); CI uses
         // `flutter build apk --target-platform android-arm64` which produces a
         // SINGLE arm64 APK, so the override isn't even needed in practice.
-        variant.outputs.all { output ->
+        variant.outputs.forEach { output ->
             val abiCodes = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 3)
             try {
                 val outputCls = output.javaClass
@@ -232,9 +135,9 @@ android {
 
                 if (abiName != null) {
                     val abiCode = abiCodes[abiName]
-                    if (abiCode != null && variant.versionCode != null) {
+                    if (abiCode != null) {
                         // --- 2. Set versionCodeOverride via setter ---
-                        val newCode = (variant.versionCode ?: 1) * 100 + abiCode
+                        val newCode = variant.versionCode * 100 + abiCode
                         try {
                             val setter = outputCls.getMethod(
                                 "setVersionCodeOverride",
