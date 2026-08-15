@@ -1,4 +1,4 @@
-name: Build Debug APK
+name: Build Release APK
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Android Debug APK
+    name: Build Android Release APK
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -64,17 +64,53 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      # Build only arm64-v8a (modern 64-bit ARM, covers 95%+ of Android phones).
-      # Default debug build produces a fat APK with 3 ABIs; targeting one cuts
-      # native compile time roughly by two-thirds.
-      # To test on an x86_64 emulator instead, switch to: android-x64
-      - name: Build Debug APK
-        run: flutter build apk --debug --target-platform android-arm64
+      # Decode the release keystore (stored as base64 in GitHub Secrets) into
+      # android/app/release.jks, and write android/key.properties (gitignored)
+      # so Gradle can sign the release APK.
+      # Secrets are passed via env (never echoed) and consumed in the heredoc.
+      # Bash variable expansion is non-recursive, so a '$' inside a password
+      # value is written through verbatim (not re-expanded).
+      # Local dev: place release.jks at android/app/release.jks and create
+      # android/key.properties manually with the same four keys.
+      - name: Decode Keystore & Write key.properties
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+          cat > android/key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          echo "Keystore bytes: $(wc -c < android/app/release.jks)"
 
-      - name: Upload Debug APK
+      # Build only arm64-v8a (modern 64-bit ARM, covers 95%+ of Android phones).
+      # Release build uses Dart AOT compilation (faster, smaller than debug).
+      - name: Build Release APK
+        run: flutter build apk --release --target-platform android-arm64
+
+      # Print the APK signing certificate fingerprints (SHA-1/SHA-256) so they
+      # can be registered with app stores / 3rd-party platforms (WeChat, maps,
+      # etc.). apksigner reads v2/v3 signatures (keytool only reads v1).
+      # continue-on-error: this is informational only; never block the build.
+      - name: Print Signing Certificate
+        continue-on-error: true
+        run: |
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk
+          else
+            keytool -printcert -jarfile build/app/outputs/flutter-apk/app-release.apk || true
+          fi
+
+      - name: Upload Release APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14

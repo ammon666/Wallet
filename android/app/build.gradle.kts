@@ -56,7 +56,15 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // When key.properties is present (CI injects it), sign with the
+            // real release keystore. When absent (local dev without signing
+            // keys), fall back to the debug signing config so that
+            // `flutter build apk --release` still works locally.
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
