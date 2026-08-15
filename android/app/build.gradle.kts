@@ -54,6 +54,9 @@ android {
                 // and covers keystores that share one password for both entries.
                 val kp = keystoreProperties["keyPassword"] as? String
                 keyPassword = if (!kp.isNullOrEmpty()) kp else storePassword
+                // Explicitly set the keystore type so AGP doesn't guess from
+                // the .jks extension — the file may actually be PKCS#12.
+                keystoreProperties["storeType"]?.let { storeType = it as String }
             }
         }
     }

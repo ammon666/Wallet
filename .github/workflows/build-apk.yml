@@ -81,8 +81,9 @@ jobs:
       # password). This catches mismatched secrets BEFORE the 3-minute Flutter
       # build, with a clear error message instead of a cryptic Gradle failure.
       #
-      # Local dev: place release.jks at android/app/release.jks and create
-      # android/key.properties manually with the same four keys.
+      # Local dev: place release.jks (or release.p12) at android/app/release.jks
+      # and create android/key.properties manually with the same five keys
+      # (storeFile, storePassword, keyAlias, keyPassword, storeType).
       - name: Decode Keystore, Write key.properties & Verify
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -109,23 +110,35 @@ jobs:
               sys.exit(f"Decoded keystore is only {len(data)} bytes — too small "
                        "for a real JKS. Check that the secret holds the FULL "
                        "base64 output of release.jks.")
-          # JKS (Sun) magic: bytes 0..3 == FE ED FE ED
-          if data[:4] != b"\xfe\xed\xfe\xed":
+          # Detect keystore format from magic bytes — accept BOTH:
+          #   JKS     → FE ED FE ED           (Sun JKS magic)
+          #   PKCS#12 → 30 82 XX XX           (ASN.1 DER SEQUENCE)
+          # Since Java 9, keytool -genkeypair defaults to PKCS#12 (not JKS),
+          # so we must accept both. keytool / jarsigner / Gradle all auto-detect
+          # the format, but we also write storeType to key.properties so AGP
+          # doesn't have to guess from the .jks file extension.
+          is_jks = data[:4] == b"\xfe\xed\xfe\xed"
+          is_pkcs12 = len(data) >= 2 and data[0] == 0x30 and data[1] in (0x82, 0x83)
+          if not (is_jks or is_pkcs12):
               head = " ".join(f"{b:02X}" for b in data[:8])
               sys.exit(
-                  "Decoded keystore does NOT start with JKS magic (FEEDFEED).\n"
+                  "Decoded keystore is neither JKS (magic FEEDFEED) nor\n"
+                  "PKCS#12 (ASN.1 SEQUENCE 30 82).\n"
                   "First 8 bytes: " + head + "\n"
                   "Likely causes:\n"
-                  "  1) You pasted a .p12 (PKCS#12) but Gradle loads it as JKS.\n"
-                  "     Regenerate with: keytool -genkeypair -storetype jks ...\n"
-                  "  2) The base64 was truncated or a wrong file was encoded.\n"
-                  "     Re-encode the FULL file and paste into KEYSTORE_BASE64."
+                  "  1) The base64 was truncated or a wrong file was encoded.\n"
+                  "     Re-encode the FULL .jks or .p12 file and paste into\n"
+                  "     KEYSTORE_BASE64.\n"
+                  "  2) You pasted a PEM text key/cert — keytool needs a\n"
+                  "     BINARY keystore (.jks or .p12), not a text PEM file."
               )
+          ks_type = "jks" if is_jks else "pkcs12"
           ks_path = pathlib.Path("android/app/release.jks")
           ks_path.parent.mkdir(parents=True, exist_ok=True)
           ks_path.write_bytes(data)
           sha = hashlib.sha256(data).hexdigest()
-          print(f"✓ Keystore decoded: {len(data)} bytes, SHA-256 = {sha[:16]}...")
+          print(f"✓ Keystore decoded ({ks_type.upper()}): {len(data)} bytes, "
+                f"SHA-256 = {sha[:16]}...")
 
           # ================================================================
           # 2. Read passwords from env (Python = verbatim, no shell expansion)
@@ -294,6 +307,7 @@ jobs:
               f"storePassword={esc(store_pass)}\n"
               f"keyAlias={esc(key_alias)}\n"
               f"keyPassword={esc(verified_key_pass)}\n"
+              f"storeType={ks_type}\n"
           )
           print(f"✓ Wrote {props}")
           print("\n✅ All keystore checks passed. Ready to build.")
