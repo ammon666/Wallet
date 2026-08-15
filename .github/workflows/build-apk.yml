@@ -154,22 +154,7 @@ jobs:
               print("  re-paste the password WITHOUT trailing whitespace.\n")
 
           # ================================================================
-          # 3. Write key.properties via Python (NOT bash heredoc).
-          #    Escape backslashes for Java Properties format (\ → \\).
-          # ================================================================
-          def esc(v):
-              return v.replace("\\", "\\\\")
-          props = pathlib.Path("android/key.properties")
-          props.write_text(
-              f"storeFile=release.jks\n"
-              f"storePassword={esc(store_pass)}\n"
-              f"keyAlias={esc(key_alias)}\n"
-              f"keyPassword={esc(key_pass)}\n"
-          )
-          print(f"✓ Wrote {props}")
-
-          # ================================================================
-          # 4. Verify STORE password + alias with keytool.
+          # 3. Verify STORE password + alias with keytool.
           # ================================================================
           print("\n--- keytool: verifying store password & alias ---")
           r = subprocess.run(
@@ -205,45 +190,112 @@ jobs:
           print(f"✓ Alias '{key_alias}' exists in keystore.")
 
           # ================================================================
-          # 5. Verify KEY password by signing a throwaway test JAR.
+          # 4. Verify KEY password by signing a throwaway test JAR.
           #    keytool -list only checks the store password — the key
           #    password is separate and must also be correct. jarsigner
           #    needs BOTH, so a successful sign proves both are right.
+          #
+          #    FALLBACK: If KEY_PASSWORD fails, retry with KEYSTORE_PASSWORD.
+          #    This handles the common case where the keystore uses the SAME
+          #    password for store and key, but the two GitHub Secrets differ
+          #    slightly (trailing whitespace, a typo, etc.). The verified
+          #    password is then written to key.properties so Gradle signs
+          #    with the one that actually works.
           # ================================================================
           print("\n--- jarsigner: verifying key password ---")
-          with tempfile.TemporaryDirectory() as td:
-              jar_path = pathlib.Path(td) / "test.jar"
-              txt_path = pathlib.Path(td) / "test.txt"
-              txt_path.write_text("signing-test")
-              subprocess.run(
-                  ["jar", "cf", str(jar_path), "-C", td, "test.txt"],
-                  check=True, capture_output=True
-              )
-              r3 = subprocess.run(
-                  ["jarsigner",
-                   "-keystore", str(ks_path),
-                   "-storepass", store_pass,
-                   "-keypass", key_pass,
-                   str(jar_path), key_alias],
-                  capture_output=True, text=True
-              )
-              print(r3.stdout)
-              if r3.returncode != 0:
-                  print(r3.stderr)
+
+          def try_sign(kp):
+              with tempfile.TemporaryDirectory() as td:
+                  jar_path = pathlib.Path(td) / "test.jar"
+                  txt_path = pathlib.Path(td) / "test.txt"
+                  txt_path.write_text("signing-test")
+                  subprocess.run(
+                      ["jar", "cf", str(jar_path), "-C", td, "test.txt"],
+                      check=True, capture_output=True
+                  )
+                  return subprocess.run(
+                      ["jarsigner",
+                       "-keystore", str(ks_path),
+                       "-storepass", store_pass,
+                       "-keypass", kp,
+                       str(jar_path), key_alias],
+                      capture_output=True, text=True
+                  )
+
+          r3 = try_sign(key_pass)
+          verified_key_pass = key_pass
+          if r3.returncode != 0:
+              print(f"  ✗ KEY_PASSWORD rejected: {r3.stderr.strip()}")
+              if key_pass != store_pass:
+                  # Retry with the store password — the keystore may share
+                  # one password for both entries while the Secrets differ.
+                  print("  ↳ Retrying with KEYSTORE_PASSWORD as key password "
+                        "(store=key fallback)...")
+                  r3 = try_sign(store_pass)
+                  if r3.returncode == 0:
+                      verified_key_pass = store_pass
+                      print("  ✓ Fallback succeeded — using KEYSTORE_PASSWORD "
+                            "as the key password.")
+                  else:
+                      print(f"  ✗ KEYSTORE_PASSWORD also rejected: "
+                            f"{r3.stderr.strip()}")
+                      sys.exit(
+                          "❌ jarsigner FAILED with BOTH KEY_PASSWORD and\n"
+                          "   KEYSTORE_PASSWORD. The keystore's key entry\n"
+                          "   accepts neither GitHub Secret.\n"
+                          "   The keystore was created with a key password\n"
+                          "   that differs from the store password (likely\n"
+                          "   shell expansion of '!!' or special chars during\n"
+                          "   keytool -genkeypair). Fix by EITHER:\n"
+                          "     1. Regenerating the keystore with identical\n"
+                          "        store/key passwords (press RETURN at the\n"
+                          "        'Enter key password' prompt), OR\n"
+                          "     2. Changing the key password locally:\n"
+                          "        keytool -keypasswd -keystore release.jks\n"
+                          "          -alias <KEY_ALIAS>\n"
+                          "        (enter store pw, then old key pw, then the\n"
+                          "        new key pw = store pw)\n"
+                          "     Then re-encode the keystore to base64 and\n"
+                          "     update the KEYSTORE_BASE64 GitHub Secret."
+                      )
+              else:
+                  # KEY_PASSWORD == KEYSTORE_PASSWORD in Secrets, so the
+                  # fallback cannot help — the keystore genuinely has a
+                  # different key password.
                   sys.exit(
-                      "❌ jarsigner FAILED → KEY_PASSWORD is wrong.\n"
-                      "   keytool -list succeeded (store password is OK), but\n"
-                      "   the KEY password doesn't match the key entry.\n"
-                      "   Common causes:\n"
-                      "     1. KEY_PASSWORD differs from what you typed at the\n"
-                      "        'Enter key password for <release>' prompt.\n"
-                      "     2. If you used the SAME password for store and key,\n"
-                      "        make sure KEY_PASSWORD and KEYSTORE_PASSWORD\n"
-                      "        have identical values in GitHub Secrets.\n"
-                      "     3. The secret has trailing whitespace/newline from\n"
-                      "        copy-paste (see the whitespace warning above)."
+                      "❌ jarsigner FAILED → key password is wrong.\n"
+                      "   KEY_PASSWORD and KEYSTORE_PASSWORD have the SAME\n"
+                      "   value in GitHub Secrets, but the keystore's key\n"
+                      "   entry rejects it. The keystore was created with a\n"
+                      "   DIFFERENT key password (e.g. shell expanded '!!' or\n"
+                      "   other special chars during keytool -genkeypair).\n"
+                      "   Fix by EITHER:\n"
+                      "     1. Regenerating the keystore (press RETURN at the\n"
+                      "        'Enter key password' prompt to reuse the store\n"
+                      "        password), OR\n"
+                      "     2. Changing the key password to match the store:\n"
+                      "        keytool -keypasswd -keystore release.jks\n"
+                      "          -alias <KEY_ALIAS>\n"
+                      "     Then re-encode to base64 and update KEYSTORE_BASE64."
                   )
           print("✓ Key password verified — test JAR signed successfully!")
+
+          # ================================================================
+          # 5. Write key.properties via Python (NOT bash heredoc).
+          #    Uses the VERIFIED key password — which may be KEYSTORE_PASSWORD
+          #    if the store=key fallback succeeded. Escape backslashes for
+          #    Java Properties format (\ → \\).
+          # ================================================================
+          def esc(v):
+              return v.replace("\\", "\\\\")
+          props = pathlib.Path("android/key.properties")
+          props.write_text(
+              f"storeFile=release.jks\n"
+              f"storePassword={esc(store_pass)}\n"
+              f"keyAlias={esc(key_alias)}\n"
+              f"keyPassword={esc(verified_key_pass)}\n"
+          )
+          print(f"✓ Wrote {props}")
           print("\n✅ All keystore checks passed. Ready to build.")
           PY
 

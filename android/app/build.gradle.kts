@@ -47,9 +47,13 @@ android {
             // (it is gitignored, so CI/debug builds skip this gracefully).
             if (keystorePropertiesFile.exists()) {
                 keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
                 storeFile = keystoreProperties["storeFile"]?.let { file(it) }
                 storePassword = keystoreProperties["storePassword"] as String
+                // Fall back to the store password when keyPassword is absent
+                // or blank — this matches the CI workflow's store=key fallback
+                // and covers keystores that share one password for both entries.
+                val kp = keystoreProperties["keyPassword"] as? String
+                keyPassword = if (!kp.isNullOrEmpty()) kp else storePassword
             }
         }
     }
