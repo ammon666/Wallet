@@ -318,12 +318,6 @@ jobs:
       - name: Build Release APK
         run: flutter build apk --release --target-platform android-arm64
 
-      # Build App Bundle (AAB) for Google Play Console upload.
-      # AAB is required by Google Play; the Play Store handles per-device
-      # APK splitting/delivery automatically.
-      - name: Build Release AAB
-        run: flutter build appbundle --release --target-platform android-arm64
-
       # Print the APK signing certificate fingerprints (SHA-1/SHA-256) so they
       # can be registered with app stores / 3rd-party platforms (WeChat, maps,
       # etc.). apksigner reads v2/v3 signatures (keytool only reads v1).
@@ -339,17 +333,25 @@ jobs:
           fi
 
       # ================================================================
-      # Rename APK & AAB to include version, build number, architecture,
-      # date, and git SHA — so every downloaded file is self-identifying.
+      # Rename APK to a simple, self-identifying name:
       #
-      #   Format: Wallet-v{VERSION}-b{BUILD}-{ARCH}-{YYYYMMDD}-{SHA7}.apk
-      #   Example: Wallet-v1.0.41-b44-arm64-20260815-a1b2c3d.apk
+      #   Format: Wallet-v{VERSION}.apk
+      #   Example: Wallet-v1.0.41.apk
       #
-      # The renamed files are uploaded to a Draft Release below, where
-      # users can download them directly WITHOUT a wrapping .zip
-      # (unlike actions/upload-artifact which always zips).
+      # VERSION comes from pubspec.yaml (e.g. "version: 1.0.41+44" → 1.0.41).
+      # To release a new version, just bump the version in pubspec.yaml
+      # (1.0.41 → 1.0.42 → 1.0.43 ...) and push — the file name follows
+      # automatically.
+      #
+      # The renamed APK is uploaded to a Draft Release below, where users
+      # can download it directly WITHOUT a wrapping .zip (unlike
+      # actions/upload-artifact which always zips).
+      #
+      # To keep the git tag UNIQUE across re-builds of the same version,
+      # the tag carries a seconds-precision timestamp (e.g.
+      # v1.0.41-20260815-143052). The APK file name stays clean.
       # ================================================================
-      - name: Rename APK & AAB with version info
+      - name: Rename APK with version info
         run: |
           # Parse version from pubspec.yaml: "version: 1.0.41+44"
           VERSION_LINE=$(grep '^version:' pubspec.yaml | head -1 | awk '{print $2}')
@@ -357,31 +359,30 @@ jobs:
           VERSION_CODE="${VERSION_LINE##*+}"      # 44
           BUILD_DATE=$(date -u +%Y%m%d)            # 20260815
           BUILD_DATE_ISO=$(date -u +%Y-%m-%d)      # 2026-08-15
+          BUILD_TS=$(date -u +%Y%m%d-%H%M%S)       # 20260815-143052 (tag uniqueness)
           SHA7=$(git rev-parse --short=7 HEAD)     # a1b2c3d
           ARCH="arm64"
 
-          APK_NAME="Wallet-v${VERSION_NAME}-b${VERSION_CODE}-${ARCH}-${BUILD_DATE}-${SHA7}.apk"
-          AAB_NAME="Wallet-v${VERSION_NAME}-b${VERSION_CODE}-${BUILD_DATE}-${SHA7}.aab"
+          # Clean APK name — just Wallet-v1.0.41.apk
+          APK_NAME="Wallet-v${VERSION_NAME}.apk"
 
           mkdir -p build/release
           cp build/app/outputs/flutter-apk/app-release.apk "build/release/${APK_NAME}"
-          cp build/app/outputs/bundle/release/app-release.aab "build/release/${AAB_NAME}"
 
           # Export env vars for later steps (Release creation + body text).
           # Note: GITHUB_ENV persists across steps in the same job.
           {
             echo "APK_NAME=${APK_NAME}"
-            echo "AAB_NAME=${AAB_NAME}"
             echo "VERSION_NAME=${VERSION_NAME}"
             echo "VERSION_CODE=${VERSION_CODE}"
             echo "BUILD_DATE=${BUILD_DATE}"
             echo "BUILD_DATE_ISO=${BUILD_DATE_ISO}"
+            echo "BUILD_TS=${BUILD_TS}"
             echo "SHA7=${SHA7}"
             echo "ARCH=${ARCH}"
           } >> "$GITHUB_ENV"
 
           echo "✓ Renamed APK: ${APK_NAME}"
-          echo "✓ Renamed AAB: ${AAB_NAME}"
 
       - name: Upload Release APK
         if: success()
@@ -391,17 +392,9 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
 
-      - name: Upload Release AAB
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release-aab
-          path: build/app/outputs/bundle/release/app-release.aab
-          retention-days: 14
-
       # ================================================================
-      # Create a DRAFT GitHub Release with the renamed APK & AAB as direct
-      # download assets. Draft = NOT visible on the repo's public Releases
+      # Create a DRAFT GitHub Release with the renamed APK as a direct
+      # download asset. Draft = NOT visible on the repo's public Releases
       # page; only collaborators can see/download from the Releases page
       # "Drafts" section. When ready to publish, go to Releases → Edit → Publish.
       #
@@ -412,16 +405,17 @@ jobs:
       #   - Draft status lets you verify the build before public release.
       #
       # TAG STRATEGY:
-      #   v{VERSION}-b{BUILD}-{DATE}-{SHA7}  →  v1.0.41-b44-20260815-a1b2c3d
-      #   Tag is unique per build (date + SHA), so re-running the workflow
-      #   on the same commit produces a different tag (different date).
+      #   v{VERSION}-{YYYYMMDD-HHMMSS}  →  v1.0.41-20260815-143052
+      #   Seconds-precision timestamp keeps the tag unique even if the
+      #   same version is re-built. The APK file name stays clean
+      #   (Wallet-v1.0.41.apk) — only the tag carries the timestamp.
       # ================================================================
-      - name: Create Draft Release with APK & AAB
+      - name: Create Draft Release with APK
         if: success()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.VERSION_NAME }}-b${{ env.VERSION_CODE }}-${{ env.BUILD_DATE }}-${{ env.SHA7 }}
-          name: Wallet v${{ env.VERSION_NAME }} (build ${{ env.VERSION_CODE }}) — ${{ env.BUILD_DATE_ISO }}
+          tag_name: v${{ env.VERSION_NAME }}-${{ env.BUILD_TS }}
+          name: Wallet v${{ env.VERSION_NAME }} — ${{ env.BUILD_DATE_ISO }}
           body: |
             ## 构建信息
 
@@ -434,14 +428,12 @@ jobs:
 
             ## 下载说明
 
-            - **APK** (国内渠道): 直接下载安装 `.apk` 文件
-            - **AAB** (Google Play): 用于 Play Console 上传，普通用户请下载 APK
+            - 直接下载 `.apk` 文件安装即可
 
             ---
             *此为 Draft 版本，仅协作者可见。如需公开发布，请到 Releases 页面手动 Publish。*
           files: |
             build/release/${{ env.APK_NAME }}
-            build/release/${{ env.AAB_NAME }}
           draft: true
           prerelease: false
           generate_release_notes: false

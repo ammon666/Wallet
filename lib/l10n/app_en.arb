@@ -610,7 +610,7 @@
   "@filterAllNetworks": {"description": "Default network dropdown value: All card networks"},
   "filterAllIssuers": "All Issuers",
   "@filterAllIssuers": {"description": "Default issuer dropdown value: All card issuers"},
-  "filterAllCardTypes": "All Types",
+  "filterAllCardTypes": "All Card Types",
   "@filterAllCardTypes": {"description": "Default card-type dropdown value: All card types"},
   "actionArchive": "Archive",
   "@actionArchive": {"description": "Archive action button label"},

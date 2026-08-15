@@ -501,7 +501,7 @@
   "filterType": "类型",
   "filterAllNetworks": "全部卡组织",
   "filterAllIssuers": "全部发卡行",
-  "filterAllCardTypes": "全部类型",
+  "filterAllCardTypes": "全部卡类型",
   "actionArchive": "归档",
   "actionUnarchive": "取消归档",
   "actionDeletePermanently": "永久删除",
