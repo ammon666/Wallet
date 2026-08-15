@@ -47,8 +47,8 @@ subprojects {
 subprojects {
     fun patchCompileSdk() {
         val androidExt = extensions.findByName("android") ?: return
+        val cls = androidExt.javaClass
         try {
-            val cls = androidExt.javaClass
             val setter = cls.getMethod("setCompileSdk", Int::class.javaPrimitiveType)
             setter.invoke(androidExt, 37)
         } catch (e: NoSuchMethodException) {
