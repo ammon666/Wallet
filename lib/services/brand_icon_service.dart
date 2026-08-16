@@ -289,4 +289,21 @@ class BrandIconService {
 
     return '$head$cleanedTag$tail';
   }
+
+  // ---------------------------------------------------------------------------
+  // Public metadata used by card entry forms to build issuer dropdowns
+  // ---------------------------------------------------------------------------
+
+  /// All bundled issuer names (sorted lexicographically).
+  ///
+  /// Forms show this list first, then a single "其它 / Other" entry.
+  List<String> get availableIssuers {
+    final list = _issuerSvgs.keys.toList();
+    list.sort((a, b) => a.compareTo(b));
+    return List.unmodifiable(list);
+  }
+
+  /// Sentinel value used by dropdown menus to signal that the user wants
+  /// to enter a free-form issuer name that is not bundled in the icon set.
+  static const String issuerOtherSentinel = '__other__';
 }

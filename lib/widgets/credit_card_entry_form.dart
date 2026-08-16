@@ -8,6 +8,7 @@ import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/models/theme_provider.dart';
 import 'package:wallet/services/auto_backup_service.dart';
+import 'package:wallet/services/brand_icon_service.dart';
 import 'package:wallet/services/card_utils.dart';
 import 'package:wallet/services/image_service.dart';
 import 'package:wallet/widgets/color_picker.dart';
@@ -17,10 +18,12 @@ import 'package:wallet/widgets/image_picker_widget.dart';
 
 class CreditCardEntryForm extends StatefulWidget {
   final String? initialColor;
+  final String? initialIssuer;
 
   const CreditCardEntryForm({
     super.key,
     this.initialColor,
+    this.initialIssuer,
   });
 
   @override
@@ -41,6 +44,9 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   String? _cardCategory; // 'credit' | 'debit' | null
   final List<String> _tags = [];
   late String _selectedColor;
+  /// 当前选中的发卡行下拉项。值为 [BrandIconService.issuerOtherSentinel]
+  /// 时，下方显示 TextField 允许用户自由输入「其他」发卡行名称。
+  late String _selectedIssuer;
   File? _frontImageFile;
   File? _backImageFile;
   bool _showAdditionalDetails = true;
@@ -54,9 +60,22 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   void initState() {
     super.initState();
     _selectedColor = widget.initialColor ?? 'default';
+    // 初始下拉选择：优先与 widget.initialIssuer 对齐（若恰好命中库内
+    // 选项），否则默认进入「其他」自由输入模式。
+    final brand = BrandIconService.instance;
+    final initialIssuer = widget.initialIssuer ?? '';
+    if (initialIssuer.isNotEmpty &&
+        brand.availableIssuers.contains(initialIssuer)) {
+      _selectedIssuer = initialIssuer;
+      _issuerController.text = initialIssuer;
+    } else {
+      _selectedIssuer = BrandIconService.issuerOtherSentinel;
+      _issuerController.text = initialIssuer;
+    }
     _nameController.addListener(_onFieldChanged);
     _numberController.addListener(_onNumberChanged);
     _expiryController.addListener(_onFieldChanged);
+    _issuerController.addListener(_onFieldChanged);
     // Validate on focus loss (not on every keystroke) — Feature 5.
     _numberFocusNode.addListener(() {
       if (!_numberFocusNode.hasFocus) {
@@ -323,13 +342,45 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                 },
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _issuerController,
-                decoration: InputDecoration(
-                  labelText: l.cardIssuerLabel,
-                ),
-                validator: (v) => v!.isEmpty ? l.validationEnterIssuer : null,
+              DropdownButtonFormField<String>(
+                value: _selectedIssuer,
+                decoration: InputDecoration(labelText: l.cardIssuerLabel),
+                items: [
+                  ...BrandIconService.instance.availableIssuers.map(
+                    (name) => DropdownMenuItem<String>(
+                      value: name,
+                      child: Text(name),
+                    ),
+                  ),
+                  const DropdownMenuItem<String>(
+                    value: BrandIconService.issuerOtherSentinel,
+                    child: Text('其他'),
+                  ),
+                ],
+                onChanged: (newValue) {
+                  if (newValue == null) return;
+                  setState(() {
+                    _selectedIssuer = newValue;
+                    // 当用户选中库内已有选项时，直接写入 issuer controller；
+                    // 否则保持 controller 为空，等用户在下方手动填。
+                    if (newValue != BrandIconService.issuerOtherSentinel) {
+                      _issuerController.text = newValue;
+                    }
+                  });
+                },
               ),
+              if (_selectedIssuer == BrandIconService.issuerOtherSentinel) ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _issuerController,
+                  decoration: const InputDecoration(
+                    labelText: '自定义发卡行',
+                    hintText: '如：地方银行 / 外资银行等',
+                  ),
+                  validator: (v) =>
+                      v!.isEmpty ? l.validationEnterIssuer : null,
+                ),
+              ],
               const SizedBox(height: 16),
               DropdownButtonFormField<String?>(
                 value: _cardCategory,

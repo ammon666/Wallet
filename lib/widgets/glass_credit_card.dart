@@ -13,11 +13,27 @@ class GlassCreditCard extends StatefulWidget {
   final bool isMasked;
   final VoidCallback onCardTap;
 
+  /// Show the CVV on the bottom row, to the left of the expiry. Intended
+  /// only for the detail page where the user has explicitly unlocked the
+  /// card; the home list tiles leave this as `false`.
+  final bool showCvv;
+
+  /// Whether the CVV digits are visible (or masked with bullets).
+  final bool cvvRevealed;
+
+  /// Optional tap handler for the reveal-eye icon next to the CVV. The
+  /// widget does not manage reveal state internally; it mirrors the value
+  /// of [cvvRevealed] and calls this back when the user taps the icon.
+  final VoidCallback? onCvvRevealToggle;
+
   const GlassCreditCard({
     super.key,
     required this.wallet,
     required this.isMasked,
     required this.onCardTap,
+    this.showCvv = false,
+    this.cvvRevealed = false,
+    this.onCvvRevealToggle,
   });
 
   @override
@@ -37,6 +53,22 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
   String _formatExpiry(String input) {
     if (input.length != 4) return "MM/YY";
     return "${input.substring(0, 2)}/${input.substring(2, 4)}";
+  }
+
+  bool get _cvvHasValue {
+    final cvv = widget.wallet.cvv;
+    return cvv != null && cvv.isNotEmpty;
+  }
+
+  /// Renders the CVV label shown next to the expiry on the card detail view.
+  ///
+  /// Mirrors the existing "reveal" semantics: dots by default, digits when
+  /// the parent has flipped [widget.cvvRevealed] to `true`.
+  String _renderCvvText() {
+    final l = AppLocalizations.of(context);
+    final cvv = widget.wallet.cvv;
+    if (!_cvvHasValue) return l?.naValue ?? 'N/A';
+    return widget.cvvRevealed ? cvv! : '•' * cvv!.length;
   }
 
   @override
@@ -118,10 +150,40 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                       ),
                     ],
                   ),
-                  if (widget.wallet.cardCategory != null) ...[
-                    const SizedBox(height: 6),
-                    _CardCategoryBadge(
-                      category: widget.wallet.cardCategory!,
+                  // 卡类型徽章 + 自定义 Tags：合并成一行显示，放在卡号上方；
+                  // 卡类型永远放在首位，使用 SingleChildScrollView 以防
+                  // 标签过多溢出（超宽时左右滑）。
+                  if ((widget.wallet.cardCategory != null) ||
+                      (widget.wallet.tags != null &&
+                          widget.wallet.tags!.isNotEmpty)) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 28,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            if (widget.wallet.cardCategory != null)
+                              _CardCategoryBadge(
+                                category: widget.wallet.cardCategory!,
+                              ),
+                            if (widget.wallet.tags != null &&
+                                widget.wallet.tags!.isNotEmpty) ...[
+                              if (widget.wallet.cardCategory != null)
+                                const SizedBox(width: 6),
+                              ...widget.wallet.tags!
+                                  .take(6)
+                                  .map(
+                                    (tag) => Padding(
+                                      padding: const EdgeInsets.only(right: 4.0),
+                                      child: _TagChip(label: tag),
+                                    ),
+                                  )
+                                  .toList(),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                   const Spacer(),
@@ -132,8 +194,12 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                       widget.isMasked
                           ? "$firstFour  ••••  ••••  $lastFour"
                           : _formatCardNumber(widget.wallet.number).trim(),
+                      maxLines: 1,
                       style: TextStyle(
-                        fontFamily: 'Courier',
+                        // 不再使用 'Courier' 等宽字体，与卡片上其它文字
+                        // （姓名/有效期/发卡行 fallback text 等）使用同
+                        // 一套默认字体。外层 FittedBox + maxLines:1 保
+                        // 证卡号不会被拆成两行。
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Colors.white.withValues(alpha: 0.941),
@@ -148,18 +214,6 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                       ),
                     ),
                   ),
-                  if (widget.wallet.tags != null &&
-                      widget.wallet.tags!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 2,
-                      children: widget.wallet.tags!
-                          .take(4)
-                          .map((tag) => _TagChip(label: tag))
-                          .toList(),
-                    ),
-                  ],
                   const SizedBox(height: 20),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -177,6 +231,41 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                           ),
                         ),
                       ),
+                      // --- CVV（左） + 有效期（右），中间留较大间距 ---
+                      if (widget.showCvv) ...[
+                        const SizedBox(width: 12),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _renderCvvText(),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            if (_cvvHasValue && widget.onCvvRevealToggle != null)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4.0),
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: widget.onCvvRevealToggle,
+                                  child: Icon(
+                                    widget.cvvRevealed
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    size: 16,
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        // 明确要求的：CVV 与有效期之间要空一些距离间隔。
+                        const SizedBox(width: 32),
+                      ],
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Text(

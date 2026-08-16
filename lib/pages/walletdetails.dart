@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:wallet/services/clipboard_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:wallet/services/brand_icon_service.dart';
 import 'package:wallet/services/image_service.dart';
 import 'package:wallet/widgets/color_picker.dart';
 import 'package:wallet/screens/homescreen.dart';
@@ -216,6 +217,12 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
           GlassCreditCard(
             isMasked: false,
             wallet: currentWallet,
+            showCvv: true,
+            cvvRevealed: _cvvRevealed,
+            onCvvRevealToggle: () {
+              if (!mounted) return;
+              setState(() => _cvvRevealed = !_cvvRevealed);
+            },
             onCardTap: () async {
               final copied =
                   await ClipboardService.instance.copy(currentWallet.number);
@@ -230,91 +237,6 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
             },
           ),
           const SizedBox(height: 20),
-          _LiquidGlassDetailSection(
-            title: l.walletDetailSecurity,
-            icon: Icons.lock_outline,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10.0),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.08)
-                            : Colors.black.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.pin_outlined,
-                        size: 18,
-                        color: (isDark ? Colors.white : Colors.black)
-                            .withValues(alpha: 0.6),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        l.cvvLabel,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(
-                              color: (isDark ? Colors.white : Colors.black)
-                                  .withValues(alpha: 0.7),
-                            ),
-                      ),
-                    ),
-                    // Tap CVV text to copy (Feature 3: removed copy button)
-                    GestureDetector(
-                      onTap: () async {
-                        final cvv = currentWallet.cvv;
-                        if (cvv == null || cvv.isEmpty) return;
-                        final copied =
-                            await ClipboardService.instance.copy(cvv);
-                        if (!copied || !mounted) return;
-                        final messenger = ScaffoldMessenger.of(context);
-                        messenger.hideCurrentSnackBar();
-                        messenger.showSnackBar(
-                          SnackBar(content: Text(l.cvvCopied)),
-                        );
-                      },
-                      child: Text(
-                        (currentWallet.cvv == null || currentWallet.cvv!.isEmpty)
-                            ? l.naValue
-                            : (_cvvRevealed
-                                ? currentWallet.cvv!
-                                : '•' * currentWallet.cvv!.length),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : Colors.black,
-                              letterSpacing: 2,
-                            ),
-                      ),
-                    ),
-                    if (currentWallet.cvv != null &&
-                        currentWallet.cvv!.isNotEmpty) ...[
-                      const SizedBox(width: 4),
-                      IconButton(
-                        icon: Icon(
-                          _cvvRevealed
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          size: 18,
-                          color: (isDark ? Colors.white : Colors.black)
-                              .withValues(alpha: 0.6),
-                        ),
-                        onPressed: () {
-                          setState(() => _cvvRevealed = !_cvvRevealed);
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
           if (isPathValid(currentWallet.frontImagePath) ||
               isPathValid(currentWallet.backImagePath))
             _LiquidGlassDetailSection(
@@ -433,6 +355,9 @@ class WalletEditScreenState extends State<WalletEditScreen> {
       _tagController;
   late String _network;
   late String _selectedColor;
+  /// 发卡行下拉当前选择；值为 [BrandIconService.issuerOtherSentinel] 时
+  /// 下方显示 TextField 让用户手动输入「其他」发卡行。
+  late String _selectedIssuer;
   String? _cardCategory;
   final List<String> _tags = [];
   final _numberFocusNode = FocusNode();
@@ -504,6 +429,15 @@ class WalletEditScreenState extends State<WalletEditScreen> {
       _updatePreview();
     });
     _expiryController.addListener(_updatePreview);
+    _issuerController.addListener(_updatePreview);
+    // 发卡行下拉默认选择：wallet.issuer 在库里则选中；否则走「其他」。
+    final brand = BrandIconService.instance;
+    final issuer = wallet.issuer ?? '';
+    if (issuer.isNotEmpty && brand.availableIssuers.contains(issuer)) {
+      _selectedIssuer = issuer;
+    } else {
+      _selectedIssuer = BrandIconService.issuerOtherSentinel;
+    }
   }
 
   @override
@@ -787,12 +721,42 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                _buildTextField(
-                  _issuerController,
+                _buildDropdown(
                   l.cardIssuerLabelEdit,
+                  _selectedIssuer,
                   isDark,
-                  validator: (v) => v!.isEmpty ? l.validationEnterIssuer : null,
+                  (newValue) {
+                    if (newValue == null) return;
+                    setState(() {
+                      _selectedIssuer = newValue;
+                      if (newValue != BrandIconService.issuerOtherSentinel) {
+                        _issuerController.text = newValue;
+                      }
+                    });
+                  },
+                  [
+                    ...BrandIconService.instance.availableIssuers.map(
+                      (name) => DropdownMenuItem<String>(
+                        value: name,
+                        child: Text(name),
+                      ),
+                    ),
+                    DropdownMenuItem<String>(
+                      value: BrandIconService.issuerOtherSentinel,
+                      child: const Text('其他'),
+                    ),
+                  ],
                 ),
+                if (_selectedIssuer == BrandIconService.issuerOtherSentinel) ...[
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    _issuerController,
+                    '自定义发卡行',
+                    isDark,
+                    validator: (v) =>
+                        v!.isEmpty ? l.validationEnterIssuer : null,
+                  ),
+                ],
                 const SizedBox(height: 16),
                 _buildDropdown(
                   l.cardCategoryLabel,
