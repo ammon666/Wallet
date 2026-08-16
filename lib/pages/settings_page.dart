@@ -266,21 +266,6 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
 
           _LiquidGlassSection(
-            title: l.sectionDangerZone,
-            icon: Icons.dangerous_outlined,
-            initiallyCollapsed: true,
-            collapsedSubtitle: l.dangerZoneSubtitle,
-            children: [
-              _LiquidGlassTile(
-                icon: Icons.delete_forever_outlined,
-                title: l.deleteAllDataTitle,
-                subtitle: l.deleteAllDataSubtitle,
-                onTap: () => _showDeleteAllDataDialog(themeProvider),
-              ),
-            ],
-          ),
-
-          _LiquidGlassSection(
             title: l.sectionAbout,
             icon: Icons.info_outline_rounded,
             children: [
@@ -313,6 +298,22 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
+
+          _LiquidGlassSection(
+            title: l.sectionDangerZone,
+            icon: Icons.dangerous_outlined,
+            initiallyCollapsed: true,
+            collapsedSubtitle: l.dangerZoneSubtitle,
+            children: [
+              _LiquidGlassTile(
+                icon: Icons.delete_forever_outlined,
+                title: l.deleteAllDataTitle,
+                subtitle: l.deleteAllDataSubtitle,
+                onTap: () => _showDeleteAllDataDialog(themeProvider),
+              ),
+            ],
+          ),
+
           SizedBox(height: 30),
         ],
       ),

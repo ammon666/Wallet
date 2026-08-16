@@ -128,6 +128,11 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     if (mounted) setState(() {});
   }
 
+  /// Previous detected issuer, used to detect when the user changes the
+  /// card number (vs just re-rendering). When the number changes, we
+  /// re-enable auto-detection so the issuer/category update dynamically.
+  String? _lastDetectedIssuer;
+
   void _onNumberChanged() {
     final text = _numberController.text;
     bool changed = false;
@@ -139,9 +144,17 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
       changed = true;
     }
 
-    // Auto-detect issuer (only when user hasn't manually overridden).
+    // Auto-detect issuer dynamically. When the card number changes, the
+    // detected issuer changes → re-enable auto-detection so the dropdown
+    // updates even if the user previously picked one manually.
+    final detectedIssuer = CardUtils.detectCardIssuer(text);
+    if (detectedIssuer != _lastDetectedIssuer) {
+      _lastDetectedIssuer = detectedIssuer;
+      // Card number changed → allow auto-detection to override again.
+      _userOverrodeIssuer = false;
+      _userOverrodeCategory = false;
+    }
     if (!_userOverrodeIssuer) {
-      final detectedIssuer = CardUtils.detectCardIssuer(text);
       if (detectedIssuer != null && detectedIssuer != _issuerController.text) {
         _issuerController.text = detectedIssuer;
         final brand = BrandIconService.instance;
@@ -154,10 +167,10 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
       }
     }
 
-    // Auto-detect card category (only if user hasn't manually overridden).
-    if (!_userOverrodeCategory && _cardCategory == null) {
+    // Auto-detect card category dynamically.
+    if (!_userOverrodeCategory) {
       final detectedCategory = CardUtils.detectCardCategory(text);
-      if (detectedCategory != null) {
+      if (detectedCategory != null && detectedCategory != _cardCategory) {
         _cardCategory = detectedCategory;
         changed = true;
       }

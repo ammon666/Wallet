@@ -1067,14 +1067,24 @@ class _HomeScreenState extends State<HomeScreen> {
                         color: isDark ? Colors.white38 : Colors.black38,
                       ),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      suffixIcon: _searchQuery.isNotEmpty
+                      suffixIcon: (_searchQuery.isNotEmpty ||
+                              _selectedCardType != 'all' ||
+                              _selectedIssuer != 'all' ||
+                              _selectedFilter != 'all')
                           ? IconButton(
                               icon: Icon(
-                                Icons.clear_rounded,
+                                Icons.filter_alt_off_rounded,
                                 color: isDark ? Colors.white54 : Colors.black45,
                               ),
+                              tooltip: l.filterAll ?? '重置筛选',
                               onPressed: () {
                                 _searchController.clear();
+                                setState(() {
+                                  _searchQuery = '';
+                                  _selectedCardType = 'all';
+                                  _selectedIssuer = 'all';
+                                  _selectedFilter = 'all';
+                                });
                               },
                             )
                           : null,

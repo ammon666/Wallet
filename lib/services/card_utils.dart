@@ -87,259 +87,133 @@ class CardUtils {
   /// BIN/IIN prefix. Returns the issuer name in Chinese, or null if the
   /// prefix is not recognised. This is purely offline — no network calls.
   ///
-  /// The mapping covers the most common Chinese bank BIN ranges. Users can
-  /// always override the result manually via the dropdown.
+  /// Uses numeric range comparison (faster & cleaner than string prefix
+  /// matching). Each bank maps to one or more BIN ranges; ranges are
+  /// checked in order so more-specific entries win.
+  ///
+  /// Users can always override the result manually via the dropdown.
   static String? detectCardIssuer(String? cardNumber) {
     if (cardNumber == null) return null;
     final cleaned = cardNumber.replaceAll(RegExp(r'\D'), '');
     if (cleaned.length < 6) return null;
+    final bin = int.tryParse(cleaned.substring(0, 6));
+    if (bin == null) return null;
 
-    final prefix6 = cleaned.substring(0, 6);
+    // ── 中国工商银行 ICBC ──
+    if (bin >= 621226 && bin <= 621227) return '工商银行';
+    if (bin >= 621281 && bin <= 621282) return '工商银行';
+    if (bin >= 621558 && bin <= 621559) return '工商银行';
+    if (bin >= 621618 && bin <= 621619) return '工商银行';
+    if (bin >= 621670 && bin <= 621672) return '工商银行';
+    if (bin >= 621784 && bin <= 621786) return '工商银行';
+    if (bin >= 621797 && bin <= 621799) return '工商银行';
+    if (bin >= 622200 && bin <= 622203) return '工商银行';
+    if (bin >= 622208 && bin <= 622214) return '工商银行';
+    if (bin >= 622225 && bin <= 622230) return '工商银行';
+    if (bin >= 955880 && bin <= 955882) return '工商银行';
 
-    // 中国工商银行 ICBC
-    if (RegExp(r'^62220[0-2]').hasMatch(prefix6)) return '工商银行';
-    if (prefix6.startsWith('621226') ||
-        prefix6.startsWith('621227') ||
-        prefix6.startsWith('621281') ||
-        prefix6.startsWith('621282') ||
-        prefix6.startsWith('621619') ||
-        prefix6.startsWith('621671') ||
-        prefix6.startsWith('621673') ||
-        prefix6.startsWith('621785') ||
-        prefix6.startsWith('621797') ||
-        prefix6.startsWith('621799') ||
-        prefix6.startsWith('622210') ||
-        prefix6.startsWith('622211') ||
-        prefix6.startsWith('622212') ||
-        prefix6.startsWith('622213') ||
-        prefix6.startsWith('622214') ||
-        prefix6.startsWith('955880')) {
-      return '工商银行';
-    }
+    // ── 中国建设银行 CCB ──
+    if (bin >= 436742 && bin <= 436745) return '建设银行';
+    if (bin >= 552245 && bin <= 552246) return '建设银行';
+    if (bin >= 621080 && bin <= 621082) return '建设银行';
+    if (bin >= 621466 && bin <= 621467) return '建设银行';
+    if (bin >= 621488 && bin <= 621489) return '建设银行';
+    if (bin >= 621598 && bin <= 621599) return '建设银行';
+    if (bin >= 621673 && bin <= 621674) return '建设银行';
+    if (bin >= 621700 && bin <= 621701) return '建设银行';
+    if (bin >= 622280 && bin <= 622281) return '建设银行';
+    if (bin >= 622700 && bin <= 622708) return '建设银行';
+    if (bin >= 622725 && bin <= 622726) return '建设银行';
 
-    // 中国建设银行 CCB
-    if (prefix6.startsWith('622280') ||
-        prefix6.startsWith('436742') ||
-        prefix6.startsWith('436745') ||
-        prefix6.startsWith('622700') ||
-        prefix6.startsWith('622707') ||
-        prefix6.startsWith('622708') ||
-        prefix6.startsWith('552245') ||
-        prefix6.startsWith('621700')) {
-      return '建设银行';
-    }
+    // ── 中国农业银行 ABC ──
+    if (bin >= 621282 && bin <= 621283) return '农业银行';
+    if (bin >= 621336 && bin <= 621337) return '农业银行';
+    if (bin >= 621619 && bin <= 621620) return '农业银行';
+    if (bin >= 621671 && bin <= 621673) return '农业银行';
+    if (bin >= 622836 && bin <= 622839) return '农业银行';
+    if (bin >= 622840 && bin <= 622849) return '农业银行';
+    if (bin >= 625996 && bin <= 625999) return '农业银行';
+    if (bin >= 955599 && bin <= 955599) return '农业银行';
 
-    // 中国农业银行 ABC
-    if (prefix6.startsWith('622848') ||
-        prefix6.startsWith('622849') ||
-        prefix6.startsWith('621282') ||
-        prefix6.startsWith('621336') ||
-        prefix6.startsWith('621619') ||
-        prefix6.startsWith('621671') ||
-        prefix6.startsWith('621673') ||
-        prefix6.startsWith('622840') ||
-        prefix6.startsWith('622841') ||
-        prefix6.startsWith('622842') ||
-        prefix6.startsWith('622843') ||
-        prefix6.startsWith('622844') ||
-        prefix6.startsWith('622845') ||
-        prefix6.startsWith('622846') ||
-        prefix6.startsWith('622847') ||
-        prefix6.startsWith('955599') ||
-        prefix6.startsWith('625996') ||
-        prefix6.startsWith('625997')) {
-      return '农业银行';
-    }
+    // ── 中国银行 BOC ──
+    if (bin >= 621660 && bin <= 621663) return '中国银行';
+    if (bin >= 621756 && bin <= 621758) return '中国银行';
+    if (bin >= 621785 && bin <= 621786) return '中国银行';
+    if (bin >= 621788 && bin <= 621790) return '中国银行';
+    if (bin >= 622760 && bin <= 622769) return '中国银行';
+    if (bin >= 622770 && bin <= 622771) return '中国银行';
+    if (bin >= 622775 && bin <= 622777) return '中国银行';
 
-    // 中国银行 BOC
-    if (prefix6.startsWith('622760') ||
-        prefix6.startsWith('622761') ||
-        prefix6.startsWith('622762') ||
-        prefix6.startsWith('622763') ||
-        prefix6.startsWith('622764') ||
-        prefix6.startsWith('622765') ||
-        prefix6.startsWith('622766') ||
-        prefix6.startsWith('622767') ||
-        prefix6.startsWith('622768') ||
-        prefix6.startsWith('622769') ||
-        prefix6.startsWith('621785') ||
-        prefix6.startsWith('621786') ||
-        prefix6.startsWith('621787') ||
-        prefix6.startsWith('621788') ||
-        prefix6.startsWith('621789') ||
-        prefix6.startsWith('621790')) {
-      return '中国银行';
-    }
+    // ── 交通银行 BOCOM ──
+    if (bin >= 621436 && bin <= 621437) return '交通银行';
+    if (bin >= 622260 && bin <= 622262) return '交通银行';
+    if (bin >= 622282 && bin <= 622283) return '交通银行';
+    if (bin >= 955590 && bin <= 955591) return '交通银行';
 
-    // 交通银行 BOCOM
-    if (prefix6.startsWith('622260') ||
-        prefix6.startsWith('622261') ||
-        prefix6.startsWith('622262') ||
-        prefix6.startsWith('955590') ||
-        prefix6.startsWith('621436')) {
-      return '交通银行';
-    }
+    // ── 招商银行 CMB ──
+    if (bin >= 356885 && bin <= 356890) return '招商银行';
+    if (bin >= 621483 && bin <= 621487) return '招商银行';
+    if (bin >= 622575 && bin <= 622582) return '招商银行';
+    if (bin >= 622588 && bin <= 622589) return '招商银行';
+    if (bin >= 625888 && bin <= 625889) return '招商银行';
 
-    // 招商银行 CMB
-    if (prefix6.startsWith('622588') ||
-        prefix6.startsWith('621483') ||
-        prefix6.startsWith('621485') ||
-        prefix6.startsWith('621486') ||
-        prefix6.startsWith('622575') ||
-        prefix6.startsWith('622576') ||
-        prefix6.startsWith('622577') ||
-        prefix6.startsWith('622578') ||
-        prefix6.startsWith('622579') ||
-        prefix6.startsWith('622580') ||
-        prefix6.startsWith('622581') ||
-        prefix6.startsWith('622582') ||
-        prefix6.startsWith('356885') ||
-        prefix6.startsWith('356886') ||
-        prefix6.startsWith('356887') ||
-        prefix6.startsWith('356888') ||
-        prefix6.startsWith('356889') ||
-        prefix6.startsWith('356890')) {
-      return '招商银行';
-    }
+    // ── 浦发银行 SPDB ──
+    if (bin >= 621792 && bin <= 621793) return '浦发银行';
+    if (bin >= 622500 && bin <= 622501) return '浦发银行';
+    if (bin >= 622517 && bin <= 622522) return '浦发银行';
+    if (bin >= 625957 && bin <= 625958) return '浦发银行';
 
-    // 浦发银行 SPDB
-    if (prefix6.startsWith('622517') ||
-        prefix6.startsWith('622518') ||
-        prefix6.startsWith('622521') ||
-        prefix6.startsWith('622522') ||
-        prefix6.startsWith('621792') ||
-        prefix6.startsWith('621793')) {
-      return '浦发银行';
-    }
+    // ── 中信银行 CITIC ──
+    if (bin >= 621770 && bin <= 621773) return '中信银行';
+    if (bin >= 622675 && bin <= 622679) return '中信银行';
+    if (bin >= 622680 && bin <= 622681) return '中信银行';
+    if (bin >= 622688 && bin <= 622692) return '中信银行';
+    if (bin >= 622695 && bin <= 622699) return '中信银行';
 
-    // 中信银行 CITIC
-    if (prefix6.startsWith('622690') ||
-        prefix6.startsWith('622691') ||
-        prefix6.startsWith('622692') ||
-        prefix6.startsWith('622696') ||
-        prefix6.startsWith('622698') ||
-        prefix6.startsWith('622699') ||
-        prefix6.startsWith('621771') ||
-        prefix6.startsWith('621770') ||
-        prefix6.startsWith('955580')) {
-      return '中信银行';
-    }
+    // ── 光大银行 CEB ──
+    if (bin >= 620518 && bin <= 620519) return '光大银行';
+    if (bin >= 621488 && bin <= 621489) return '光大银行';
+    if (bin >= 622660 && bin <= 622669) return '光大银行';
+    if (bin >= 622670 && bin <= 622674) return '光大银行';
 
-    // 光大银行 CEB
-    if (prefix6.startsWith('622660') ||
-        prefix6.startsWith('622662') ||
-        prefix6.startsWith('622663') ||
-        prefix6.startsWith('622664') ||
-        prefix6.startsWith('622665') ||
-        prefix6.startsWith('622666') ||
-        prefix6.startsWith('622667') ||
-        prefix6.startsWith('622668') ||
-        prefix6.startsWith('622669') ||
-        prefix6.startsWith('622670') ||
-        prefix6.startsWith('622671') ||
-        prefix6.startsWith('622672') ||
-        prefix6.startsWith('622673') ||
-        prefix6.startsWith('620518') ||
-        prefix6.startsWith('621488') ||
-        prefix6.startsWith('621489')) {
-      return '光大银行';
-    }
+    // ── 民生银行 CMBC ──
+    if (bin >= 621691 && bin <= 621692) return '民生银行';
+    if (bin >= 622600 && bin <= 622603) return '民生银行';
+    if (bin >= 622615 && bin <= 622623) return '民生银行';
 
-    // 民生银行 CMBC
-    if (prefix6.startsWith('622615') ||
-        prefix6.startsWith('622616') ||
-        prefix6.startsWith('622618') ||
-        prefix6.startsWith('622619') ||
-        prefix6.startsWith('622620') ||
-        prefix6.startsWith('622621') ||
-        prefix6.startsWith('622622') ||
-        prefix6.startsWith('622623') ||
-        prefix6.startsWith('621691') ||
-        prefix6.startsWith('622600') ||
-        prefix6.startsWith('622601') ||
-        prefix6.startsWith('622602') ||
-        prefix6.startsWith('622603')) {
-      return '民生银行';
-    }
+    // ── 广发银行 CGB ──
+    if (bin >= 621462 && bin <= 621463) return '广发银行';
+    if (bin >= 622555 && bin <= 622560) return '广发银行';
+    if (bin >= 955080 && bin <= 955081) return '广发银行';
 
-    // 广发银行 CGB
-    if (prefix6.startsWith('622555') ||
-        prefix6.startsWith('622556') ||
-        prefix6.startsWith('622557') ||
-        prefix6.startsWith('622558') ||
-        prefix6.startsWith('622559') ||
-        prefix6.startsWith('622560') ||
-        prefix6.startsWith('955080') ||
-        prefix6.startsWith('621462')) {
-      return '广发银行';
-    }
+    // ── 兴业银行 CIB ──
+    if (bin >= 621423 && bin <= 621424) return '兴业银行';
+    if (bin >= 622900 && bin <= 622903) return '兴业银行';
+    if (bin >= 622907 && bin <= 622909) return '兴业银行';
 
-    // 兴业银行 CIB
-    if (prefix6.startsWith('622909') ||
-        prefix6.startsWith('622901') ||
-        prefix6.startsWith('622902') ||
-        prefix6.startsWith('622903') ||
-        prefix6.startsWith('622908') ||
-        prefix6.startsWith('621423') ||
-        prefix6.startsWith('622900')) {
-      return '兴业银行';
-    }
+    // ── 平安银行 PAB ──
+    if (bin >= 621626 && bin <= 621627) return '平安银行';
+    if (bin >= 622155 && bin <= 622163) return '平安银行';
+    if (bin >= 998800 && bin <= 998801) return '平安银行';
 
-    // 平安银行 PAB
-    if (prefix6.startsWith('622155') ||
-        prefix6.startsWith('622156') ||
-        prefix6.startsWith('622157') ||
-        prefix6.startsWith('622158') ||
-        prefix6.startsWith('622159') ||
-        prefix6.startsWith('622161') ||
-        prefix6.startsWith('622162') ||
-        prefix6.startsWith('622163') ||
-        prefix6.startsWith('998800') ||
-        prefix6.startsWith('621626')) {
-      return '平安银行';
-    }
+    // ── 华夏银行 HXB ──
+    if (bin >= 621665 && bin <= 621669) return '华夏银行';
+    if (bin >= 622630 && bin <= 622638) return '华夏银行';
 
-    // 华夏银行 HXB
-    if (prefix6.startsWith('622630') ||
-        prefix6.startsWith('622631') ||
-        prefix6.startsWith('622632') ||
-        prefix6.startsWith('622633') ||
-        prefix6.startsWith('621665') ||
-        prefix6.startsWith('621666') ||
-        prefix6.startsWith('621667') ||
-        prefix6.startsWith('621668') ||
-        prefix6.startsWith('621669') ||
-        prefix6.startsWith('622637') ||
-        prefix6.startsWith('622638')) {
-      return '华夏银行';
-    }
+    // ── 邮储银行 PSBC ──
+    if (bin >= 621095 && bin <= 621098) return '邮储银行';
+    if (bin >= 621799 && bin <= 621800) return '邮储银行';
+    if (bin >= 622150 && bin <= 622151) return '邮储银行';
+    if (bin >= 622181 && bin <= 622184) return '邮储银行';
 
-    // 邮储银行 PSBC
-    if (prefix6.startsWith('621096') ||
-        prefix6.startsWith('621098') ||
-        prefix6.startsWith('621095') ||
-        prefix6.startsWith('622150') ||
-        prefix6.startsWith('622151') ||
-        prefix6.startsWith('621799') ||
-        prefix6.startsWith('621899')) {
-      return '邮储银行';
-    }
+    // ── 北京银行 BOB ──
+    if (bin >= 621420 && bin <= 621422) return '北京银行';
+    if (bin >= 621468 && bin <= 621469) return '北京银行';
+    if (bin >= 622163 && bin <= 622166) return '北京银行';
 
-    // 北京银行 BOB
-    if (prefix6.startsWith('621468') ||
-        prefix6.startsWith('621420') ||
-        prefix6.startsWith('622163') ||
-        prefix6.startsWith('622164')) {
-      return '北京银行';
-    }
-
-    // 上海银行 BOS
-    if (prefix6.startsWith('622173') ||
-        prefix6.startsWith('622174') ||
-        prefix6.startsWith('621740') ||
-        prefix6.startsWith('621741')) {
-      return '上海银行';
-    }
+    // ── 上海银行 BOS ──
+    if (bin >= 621740 && bin <= 621741) return '上海银行';
+    if (bin >= 622173 && bin <= 622174) return '上海银行';
 
     return null;
   }

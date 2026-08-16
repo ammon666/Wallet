@@ -315,6 +315,9 @@ class WalletEditScreenState extends State<WalletEditScreen> {
   final _expiryFocusNode = FocusNode();
   /// Set to true when the user manually picks an issuer from the dropdown.
   bool _userOverrodeIssuer = false;
+  /// Tracks the last detected issuer so we can re-enable auto-detection
+  /// when the card number (and therefore detected issuer) changes.
+  String? _lastDetectedIssuer;
   final List<TextEditingController> _customFieldNameControllers = [];
   final List<TextEditingController> _customFieldValueControllers = [];
 
@@ -379,9 +382,13 @@ class WalletEditScreenState extends State<WalletEditScreen> {
       if (detected != null && detected != _network) {
         setState(() => _network = detected);
       }
-      // Auto-detect issuer (only when user hasn't manually overridden).
+      // Dynamic auto-detection: re-enable when card number changes.
+      final detectedIssuer = CardUtils.detectCardIssuer(_numberController.text);
+      if (detectedIssuer != _lastDetectedIssuer) {
+        _lastDetectedIssuer = detectedIssuer;
+        _userOverrodeIssuer = false;
+      }
       if (!_userOverrodeIssuer) {
-        final detectedIssuer = CardUtils.detectCardIssuer(_numberController.text);
         if (detectedIssuer != null && detectedIssuer != _issuerController.text) {
           _issuerController.text = detectedIssuer;
           final brand = BrandIconService.instance;
