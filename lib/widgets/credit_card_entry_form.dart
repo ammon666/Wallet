@@ -86,16 +86,35 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     }
   }
 
-  /// Applies OCR field values returned from the scanner page into the form
-  /// state. The new flutter_credit_card_scanner package returns only text
-  /// fields (number/expiry/holderName) — no images — so front/back image
-  /// picking is left to the user via the existing image picker buttons.
+  @override
+  void didUpdateWidget(covariant CreditCardEntryForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Handle the case where initialScanResult is set after initial build
+    // (e.g., when user taps "scan" button from AddCardScreen).
+    final newResult = widget.initialScanResult;
+    final oldResult = oldWidget.initialScanResult;
+    if (newResult != null && newResult != oldResult) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _applyScanOcr(newResult);
+      });
+    }
+    // Update color if changed
+    if (widget.initialColor != oldWidget.initialColor &&
+        widget.initialColor != null) {
+      _selectedColor = widget.initialColor!;
+    }
+  }
+
+  /// Applies OCR field values and captured card image returned from the
+  /// scanner page into the form state.
   void _applyScanOcr(CardScannerResult r) {
     // Capture nullable fields into local non-null vars to avoid Dart's
     // "no promotion of nullable member variables inside closures" pitfall.
     final number = r.number;
     final expiry = r.expiry;
     final holder = r.holderName;
+    final imagePath = r.frontImagePath;
     setState(() {
       if (number != null && number.isNotEmpty) {
         _numberController.text = number;
@@ -115,6 +134,12 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
         // is often Latin ("LI LEI"), not equal to the user's card label.
         if (_nameController.text.isEmpty) {
           _nameController.text = holder;
+        }
+      }
+      if (imagePath != null && imagePath.isNotEmpty) {
+        final imageFile = File(imagePath);
+        if (imageFile.existsSync()) {
+          _frontImageFile = imageFile;
         }
       }
     });

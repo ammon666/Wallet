@@ -54,26 +54,6 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  late final AppLifecycleListener _lifecycleListener;
-
-  @override
-  void initState() {
-    super.initState();
-    _lifecycleListener = AppLifecycleListener(
-      onStateChange: (state) {
-        if (state == AppLifecycleState.paused) {
-          EncryptionService.instance.clearImageCache();
-        }
-      },
-    );
-  }
-
-  @override
-  void dispose() {
-    _lifecycleListener.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Selector<ThemeProvider, ({ThemeMode themeMode, bool useSystemFont})>(
@@ -104,6 +84,209 @@ class _MyAppState extends State<MyApp> {
           home: const SplashScreen(),
         );
       },
+    );
+  }
+}
+
+/// 认证守卫：包装应用主界面，当应用从后台/锁屏返回时要求重新认证
+class AuthGuard extends StatefulWidget {
+  final Widget child;
+
+  const AuthGuard({super.key, required this.child});
+
+  @override
+  State<AuthGuard> createState() => _AuthGuardState();
+}
+
+class _AuthGuardState extends State<AuthGuard> with WidgetsBindingObserver {
+  bool _isAuthenticating = false;
+  bool _isLocked = false;
+  bool _isInBackground = false;
+  DateTime? _pausedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    final startupProvider = Provider.of<StartupSettingsProvider>(
+      context,
+      listen: false,
+    );
+
+    // 如果没有开启认证，只清除图片缓存
+    if (!startupProvider.showAuthenticationScreen) {
+      if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+        EncryptionService.instance.clearImageCache();
+      }
+      return;
+    }
+
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _pausedAt = DateTime.now();
+      _isInBackground = true;
+      // 立即锁定，防止在任务切换器中显示应用内容
+      if (mounted) {
+        setState(() {
+          _isLocked = true;
+        });
+      }
+      EncryptionService.instance.clearImageCache();
+    } else if (state == AppLifecycleState.resumed) {
+      // 如果是从后台返回（锁屏或切换应用），需要重新认证
+      if (_isInBackground && _pausedAt != null) {
+        final pausedDuration = DateTime.now().difference(_pausedAt!);
+        // 超过1秒的后台停留就要求重新认证
+        if (pausedDuration.inSeconds >= 1) {
+          // 下一帧触发认证
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _performReAuth();
+          });
+        } else {
+          // 短暂后台切换（如下拉通知栏），直接解锁
+          if (mounted) {
+            setState(() {
+              _isLocked = false;
+            });
+          }
+        }
+      }
+      _isInBackground = false;
+      _pausedAt = null;
+    } else if (state == AppLifecycleState.inactive) {
+      // 应用进入非活动状态（来电、权限弹窗等）
+      if (!_isInBackground) {
+        _pausedAt = DateTime.now();
+      }
+    }
+  }
+
+  Future<void> _performReAuth() async {
+    if (_isAuthenticating) return;
+    _isAuthenticating = true;
+
+    try {
+      if (Platform.isLinux || kIsWeb) {
+        if (mounted) {
+          setState(() {
+            _isLocked = false;
+          });
+        }
+        return;
+      }
+
+      final auth = LocalAuthentication();
+      bool isBiometricSupported = await auth.isDeviceSupported();
+      bool canCheckBiometrics = await auth.canCheckBiometrics;
+
+      if (!isBiometricSupported || !canCheckBiometrics) {
+        if (mounted) {
+          setState(() {
+            _isLocked = false;
+          });
+        }
+        return;
+      }
+
+      bool authenticated = false;
+      while (!authenticated && mounted) {
+        try {
+          authenticated = await auth.authenticate(
+            localizedReason: AppLocalizations.of(context)!.splashAuthReason,
+            options: const AuthenticationOptions(
+              stickyAuth: true,
+              useErrorDialogs: true,
+            ),
+          );
+        } catch (_) {
+          authenticated = false;
+        }
+
+        if (authenticated && mounted) {
+          setState(() {
+            _isLocked = false;
+          });
+        } else if (!authenticated && mounted) {
+          final shouldExit = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: Text(AppLocalizations.of(context)!.splashAuthRequiredTitle),
+              content: Text(AppLocalizations.of(context)!.splashAuthRequiredMessage),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(AppLocalizations.of(context)!.splashAuthRetry),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(AppLocalizations.of(context)!.splashAuthExit),
+                ),
+              ],
+            ),
+          );
+          if (shouldExit == true) {
+            SystemNavigator.pop();
+            return;
+          }
+        }
+      }
+    } finally {
+      _isAuthenticating = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDark = themeProvider.isDarkMode;
+    final textColor = isDark ? Colors.white : Colors.black;
+
+    return Stack(
+      children: [
+        widget.child,
+        if (_isLocked)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Container(
+                color: isDark ? Colors.black : Colors.white,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.lock_rounded,
+                        size: 64,
+                        color: isDark ? Colors.white54 : Colors.black45,
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        AppLocalizations.of(context)!.appTitle.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                          letterSpacing: 6,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -191,7 +374,7 @@ class _SplashScreenState extends State<SplashScreen>
         context,
         PageRouteBuilder(
           pageBuilder: (context, animation, secondaryAnimation) =>
-              const HomeScreen(),
+              const AuthGuard(child: HomeScreen()),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return child;
           },
@@ -228,7 +411,8 @@ class _SplashScreenState extends State<SplashScreen>
             barrierDismissible: false,
             builder: (context) => AlertDialog(
               title: Text(AppLocalizations.of(context)!.splashAuthRequiredTitle),
-              content: Text(AppLocalizations.of(context)!.splashAuthRequiredMessage),
+              content:
+                  Text(AppLocalizations.of(context)!.splashAuthRequiredMessage),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),

@@ -441,31 +441,27 @@ jobs:
       # Rename APK to a simple, self-identifying name:
       #
       #   Format: Wallet-v{VERSION}-{BUILD_TS}.apk
-      #   Example: Wallet-v1.0.41-20260815-143052.apk
+      #   Example: Wallet-v1.0.41-20260816-223052.apk
       #
       # VERSION comes from pubspec.yaml (e.g. "version: 1.0.41+44" → 1.0.41).
-      # BUILD_TS is seconds-precision UTC timestamp so multiple builds of
-      # the SAME version on the same day are distinguishable by filename.
-      # This is critical for daily iterative dev cycles.
-      #
-      # The renamed APK is uploaded to a Draft Release below, where users
-      # can download it directly WITHOUT a wrapping .zip (unlike
-      # actions/upload-artifact which always zips).
-      #
-      # The git tag also uses the same seconds-precision timestamp to
-      # stay unique across re-builds:
-      #   v{VERSION}-{YYYYMMDD-HHMMSS}  →  v1.0.41-20260815-143052
+      # BUILD_TS uses Beijing time (UTC+8, Asia/Shanghai) so filenames and
+      # release notes match the user's local time zone. Seconds-precision
+      # ensures multiple builds of the same version on the same day are
+      # distinguishable.
       # ================================================================
       - name: Rename APK with version info
         run: |
+          # Set timezone to Beijing (UTC+8)
+          export TZ='Asia/Shanghai'
+
           # Parse version from pubspec.yaml: "version: 1.0.41+44"
           VERSION_LINE=$(grep '^version:' pubspec.yaml | head -1 | awk '{print $2}')
           VERSION_NAME="${VERSION_LINE%%+*}"      # 1.0.41
           VERSION_CODE="${VERSION_LINE##*+}"      # 44
-          BUILD_DATE=$(date -u +%Y%m%d)            # 20260815
-          BUILD_DATE_ISO=$(date -u +%Y-%m-%d)      # 2026-08-15
-          BUILD_TS=$(date -u +%Y%m%d-%H%M%S)       # 20260815-143052 (tag + APK uniqueness)
-          BUILD_TIME_ISO=$(date -u +%Y-%m-%d\ %H:%M:%S\ UTC) # 2026-08-15 14:30:52 UTC (for display)
+          BUILD_DATE=$(date +%Y%m%d)              # 20260816 (Beijing)
+          BUILD_DATE_ISO=$(date +%Y-%m-%d)        # 2026-08-16 (Beijing)
+          BUILD_TS=$(date +%Y%m%d-%H%M%S)         # 20260816-223052 (tag + APK uniqueness)
+          BUILD_TIME_ISO=$(date +%Y-%m-%d\ %H:%M:%S\ CST) # 2026-08-16 22:30:52 CST (for display)
           SHA7=$(git rev-parse --short=7 HEAD)     # a1b2c3d
           ARCH="arm64"
 
@@ -490,7 +486,7 @@ jobs:
             echo "ARCH=${ARCH}"
           } >> "$GITHUB_ENV"
 
-          echo "✓ Renamed APK: ${APK_NAME}"
+          echo "✓ Renamed APK: ${APK_NAME} (Beijing time: ${BUILD_TIME_ISO})"
 
       - name: Upload Release APK
         if: success()
@@ -512,14 +508,14 @@ jobs:
       #     raw — clicking the asset link downloads the .apk directly.
       #   - Draft status lets you verify the build before public release.
       #
-      # NAMING / TAG STRATEGY (all SECONDS-precision for per-build uniqueness):
+      # NAMING / TAG STRATEGY (all SECONDS-precision, Beijing time UTC+8):
       #   Git tag:       v{VERSION}-{YYYYMMDD-HHMMSS}
-      #                  → v1.0.41-20260815-143052
-      #   Release name:  Wallet v{VERSION} — {YYYYMMDD HHMMSS}
-      #                  → Wallet v1.0.41 — 2026-08-15 14:30:52 UTC
+      #                  → v1.0.41-20260816-223052
+      #   Release name:  Wallet v{VERSION} — {YYYY-MM-DD HH:MM:SS CST}
+      #                  → Wallet v1.0.41 — 2026-08-16 22:30:52 CST
       #   APK filename:  Wallet-v{VERSION}-{YYYYMMDD-HHMMSS}.apk
-      #                  → Wallet-v1.0.41-20260815-143052.apk
-      #   Release body:  Displays full BUILD_TIME_ISO down to the second.
+      #                  → Wallet-v1.0.41-20260816-223052.apk
+      #   Release body:  Displays full BUILD_TIME_ISO (Beijing time) down to the second.
       # ================================================================
       - name: Create Draft Release with APK
         if: success()

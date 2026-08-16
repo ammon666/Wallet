@@ -1292,7 +1292,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                         endActionPane: ActionPane(
                           motion: const BehindMotion(),
-                          extentRatio: _showArchived ? 0.5 : 0.45,
+                          extentRatio: _showArchived ? 0.5 : 0.25,
                           children: _showArchived
                               ? [
                                   SlidableAction(
@@ -1326,26 +1326,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ]
                               : [
-                                  SlidableAction(
-                                    onPressed: (ctx) {
-                                      HapticFeedback.mediumImpact();
-                                      ClipboardService.instance.copy(wallet.number);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(l.cardNumberCopied),
-                                          behavior: SnackBarBehavior.floating,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          duration: const Duration(seconds: 1),
-                                        ),
-                                      );
-                                    },
-                                    backgroundColor: Colors.transparent,
-                                    foregroundColor: Colors.blue,
-                                    icon: Icons.copy_rounded,
-                                    label: l.actionCopy,
-                                  ),
                                   SlidableAction(
                                     onPressed: (ctx) {
                                       HapticFeedback.mediumImpact();
