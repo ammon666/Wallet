@@ -187,42 +187,54 @@ class BrandIconService {
   // Widget builders
   // ---------------------------------------------------------------------------
 
-  /// Renders the network icon for [networkKey] inside a fixed-height box so
-  /// all network badges share the same vertical footprint.
+  /// Renders the network icon for [networkKey] inside a fixed bounding box so
+  /// all network badges share the same overall visual footprint.
+  ///
+  /// Using a fixed width+height constraint (instead of height-only) prevents
+  /// extra-wide SVGs like VISA from appearing visually larger than squarish
+  /// SVGs like UnionPay/Mastercard: long logos simply shrink to fit the box.
   ///
   /// Returns `null` when the network is not bundled so the caller can fall
   /// back to text (matching the original `_NetworkLogo` contract).
   Widget? buildNetworkIcon(
     BuildContext context,
     String? networkKey, {
-    double height = 32,
+    double width = 92,
+    double height = 30,
   }) {
     final svg = getNetworkSvg(networkKey);
     if (svg == null) return null;
-    return _renderSvg(svg, height: height);
+    return _renderSvg(svg, width: width, height: height);
   }
 
-  /// Renders the issuer icon for [issuerName] inside a fixed-height box.
+  /// Renders the issuer icon for [issuerName] inside a fixed bounding box.
   ///
   /// Returns `null` when the issuer is not bundled so the caller can fall
   /// back to text (matching the original `_IssuerBadge` contract).
   Widget? buildIssuerIcon(
     BuildContext context,
     String? issuerName, {
+    double width = 160,
     double height = 28,
   }) {
     final svg = getIssuerSvg(issuerName);
     if (svg == null) return null;
-    return _renderSvg(svg, height: height);
+    return _renderSvg(svg, width: width, height: height);
   }
 
-  static Widget _renderSvg(String svgContent, {required double height}) {
+  static Widget _renderSvg(
+    String svgContent, {
+    required double width,
+    required double height,
+  }) {
     return SizedBox(
+      width: width,
       height: height,
       child: Center(
         child: SvgPicture.string(
           svgContent,
           height: height,
+          width: width,
           fit: BoxFit.contain,
           clipBehavior: Clip.none,
         ),

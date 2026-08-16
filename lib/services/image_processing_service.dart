@@ -41,39 +41,66 @@ class ImageProcessingService {
       final w = src.width;
       final h = src.height;
       if (w < 100 || h < 100) {
-        return CardCropResult(_postProcess(src), false);
+        return CardCropResult(_postProcess(src, aggressive: true), false);
       }
       const scaleTarget = 480;
       final scale = w >= h ? scaleTarget / w : scaleTarget / h;
+      final sw = (w * scale).round();
+      final sh = (h * scale).round();
       final small = imgpkg.copyResize(
         src,
-        width: (w * scale).round(),
-        height: (h * scale).round(),
+        width: sw,
+        height: sh,
         interpolation: imgpkg.Interpolation.linear,
       );
-      final quadSmall = _findBestQuad(small);
-      if (quadSmall == null) {
-        return CardCropResult(_postProcess(src), false);
+
+      // --- Pre-processing pipeline (reused for both quad-detect and fallback) ---
+      final gray = _toGray(small);
+      final blurred = _boxBlur3(gray, sw, sh);
+      final edges = _sobel(blurred, sw, sh);
+      final binary = _thresholdOtsu(edges, sw, sh);
+      final closed = _morphClose(binary, sw, sh, radius: 2);
+
+      // --- 1) Try strict corner quad (perspective correct to upright card) ---
+      final quadSmall = _findBestQuad(closed, sw, sh);
+      if (quadSmall != null) {
+        final quad = quadSmall
+            .map((p) => Point<double>(p.x / scale, p.y / scale))
+            .toList(growable: false);
+        final ordered = _orderCorners(quad);
+        final corrected = _perspectiveWarp(src, ordered);
+        return CardCropResult(_postProcess(corrected), true);
       }
-      final quad = quadSmall
-          .map((p) => Point<double>(p.x / scale, p.y / scale))
-          .toList(growable: false);
-      final ordered = _orderCorners(quad);
-      final corrected = _perspectiveWarp(src, ordered);
-      return CardCropResult(_postProcess(corrected), true);
+
+      // --- 2) Fallback: foreground bounding-box crop (guarantees visible crop)
+      final bbox = _largestForegroundBounds(closed, sw, sh);
+      if (bbox != null) {
+        final px = (bbox.$1 / scale).floor().clamp(0, w - 1);
+        final py = (bbox.$2 / scale).floor().clamp(0, h - 1);
+        final pw = (bbox.$3 / scale).ceil().clamp(1, w - px);
+        final ph = (bbox.$4 / scale).ceil().clamp(1, h - py);
+        return CardCropResult(
+          _postProcess(_boundingBoxCrop(src, px, py, pw, ph),
+              aggressive: true),
+          false,
+        );
+      }
+
+      // --- 3) Last-resort: no foreground signal found at all, still apply
+      // aggressive normalisation so user can tell the pipeline actually ran.
+      return CardCropResult(_postProcess(src, aggressive: true), false);
     } catch (_) {
-      return CardCropResult(_postProcess(src), false);
+      // Never let a bug leak back; still run strong post-processing so the
+      // bytes that reach disk differ from the untouched input.
+      return CardCropResult(_postProcess(src, aggressive: true), false);
     }
   }
 
-  List<Point<double>>? _findBestQuad(imgpkg.Image srcImg) {
-    final gray = _toGray(srcImg);
-    final blurred = _boxBlur3(gray, srcImg.width, srcImg.height);
-    final edges = _sobel(blurred, srcImg.width, srcImg.height);
-    final binary = _thresholdOtsu(edges, srcImg.width, srcImg.height);
-    final closed = _morphClose(binary, srcImg.width, srcImg.height, radius: 2);
-    final contours = _findContours(closed, srcImg.width, srcImg.height);
-    final imgArea = srcImg.width * srcImg.height.toDouble();
+  /// Searches the already-closed binary edge mask for the largest 4-vertex
+  /// polygon whose size and aspect ratio are plausible for a card rectangle.
+  List<Point<double>>? _findBestQuad(List<bool> closed, int sw, int sh) {
+    final contours = _findContours(closed, sw, sh);
+    final imgArea = sw * sh.toDouble();
 
     List<Point<double>>? best;
     double bestArea = 0;
@@ -82,9 +109,14 @@ class ImageProcessingService {
       final approx = _douglasPeucker(c, _epsilon(c));
       if (approx.length != 4) continue;
       final area = _polygonArea(approx).abs();
-      if (area < imgArea * 0.10) continue;
+      // Relaxed minimum area (5% of frame instead of 10%) so smaller /
+      // heavily-cropped photos still trigger the perspective path.
+      if (area < imgArea * 0.05) continue;
       final ratio = _aspectRatio(approx);
-      if (ratio < 1.1 || ratio > 3.0) continue;
+      // Wider aspect-ratio tolerance (phone cameras often capture cards at
+      // strong tilt which stretches the measured ratio; a pure 1.586:1 card
+      // can look anywhere from ~0.8 to ~4 on the raw polygon).
+      if (ratio < 0.75 || ratio > 4.5) continue;
       if (area > bestArea) {
         bestArea = area;
         best = approx;
@@ -291,7 +323,9 @@ class ImageProcessingService {
       final b = poly[(i + 1) % poly.length];
       perim += sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
     }
-    return perim * 0.02;
+    // Tighter polygon simplification → more likely to keep exactly 4
+    // corner vertices instead of collapsing them together.
+    return perim * 0.01;
   }
 
   static List<Point<double>> _douglasPeucker(
@@ -409,23 +443,35 @@ class ImageProcessingService {
 
     final measuredW = (topW + botW) / 2;
     final measuredH = (leftH + rightH) / 2;
+    // Guard against degenerate quads (zero/near-zero height measured at tiny
+    // res) — fall back to a 1.586:1 rectangle scaled to the measured width.
     double targetW;
     double targetH;
-    final measured = measuredW / measuredH;
-    if (measured > 1.4 && measured < 1.8) {
-      targetH = measuredH;
-      targetW = targetH * 1.5858;
-    } else if (measured < 1 / 1.4 && measured > 1 / 1.8) {
-      targetW = measuredW;
-      targetH = targetW * 1.5858;
+    if (measuredH > 0.5 && measuredW > 0.5) {
+      final measured = measuredW / measuredH;
+      if (measured > 1.4 && measured < 1.8) {
+        targetH = measuredH;
+        targetW = targetH * 1.5858;
+      } else if (measured < 1 / 1.4 && measured > 1 / 1.8) {
+        targetW = measuredW;
+        targetH = targetW * 1.5858;
+      } else {
+        targetW = measuredW;
+        targetH = measuredH;
+      }
     } else {
-      targetW = measuredW;
-      targetH = measuredH;
+      targetW = measuredW > 100 ? measuredW : 800;
+      targetH = targetW / 1.5858;
     }
     if (targetW < 200) {
       final s = 200 / targetW;
       targetW = 200;
       targetH *= s;
+    }
+    if (targetH < 100) {
+      final s = 100 / targetH;
+      targetH = 100;
+      targetW *= s;
     }
 
     final dst = imgpkg.Image(
@@ -437,10 +483,17 @@ class ImageProcessingService {
     final iw = srcImg.width - 1;
     final ih = srcImg.height - 1;
 
-    for (int y = 0; y < dst.height; y++) {
-      final v = y / (dst.height - 1);
-      for (int x = 0; x < dst.width; x++) {
-        final u = x / (dst.width - 1);
+    // Bilinear interpolation with divide-by-zero safety in case a degenerate
+    // (1-px wide or tall) destination slipped through the guards above.
+    final dw = dst.width;
+    final dh = dst.height;
+    final vn = dh > 1 ? 1.0 / (dh - 1) : 0.0;
+    final un = dw > 1 ? 1.0 / (dw - 1) : 0.0;
+
+    for (int y = 0; y < dh; y++) {
+      final v = y * vn;
+      for (int x = 0; x < dw; x++) {
+        final u = x * un;
         final topX = tl.x + (tr.x - tl.x) * u;
         final topY = tl.y + (tr.y - tl.y) * u;
         final botX = bl.x + (br.x - bl.x) * u;
@@ -494,9 +547,21 @@ class ImageProcessingService {
   // Post-processing
   // ---------------------------------------------------------------------------
 
-  static imgpkg.Image _postProcess(imgpkg.Image srcImg) {
-    final levels = _percentileLevels(srcImg, low: 0.01, high: 0.99);
-    return _sharpen(_autoContrast(srcImg, levels.$1, levels.$2), amount: 0.35);
+  static imgpkg.Image _postProcess(
+    imgpkg.Image srcImg, {
+    bool aggressive = false,
+  }) {
+    // Aggressive mode is used for all fallback/no-quad paths so the user can
+    // visually confirm the photo was actually processed even when no card
+    // edges were detected.
+    final low = aggressive ? 0.003 : 0.01;
+    final high = aggressive ? 0.997 : 0.99;
+    final sharpen = aggressive ? 0.65 : 0.4;
+    final levels = _percentileLevels(srcImg, low: low, high: high);
+    return _sharpen(
+      _autoContrast(srcImg, levels.$1, levels.$2),
+      amount: sharpen,
+    );
   }
 
   static (int, int) _percentileLevels(imgpkg.Image srcImg,
@@ -616,4 +681,91 @@ class ImageProcessingService {
   }
 
   static int _toInt(num v) => v.round().clamp(0, 255);
+
+  // ---------------------------------------------------------------------------
+  // Fallback helpers: bounding-box crop when the strict quad detector fails
+  // ---------------------------------------------------------------------------
+
+  /// Finds the axis-aligned bounding box of the largest contiguous "card"
+  /// region in a closed edge mask. Returns `(x, y, width, height)` in the
+  /// small-image coordinate system, or `null` if no meaningful foreground
+  /// exists.
+  static (int, int, int, int)? _largestForegroundBounds(
+      List<bool> closed, int w, int h) {
+    // Instead of running a full connected-components pass (expensive to
+    // hand-roll here), compute the bounding box of *all* foreground pixels
+    // then shrink inward by one morphology-free round: take the smallest
+    // rectangle that contains every 3×3 neighbourhood with ≥1 edge pixel.
+    // This reliably produces a tight crop around whatever card the user
+    // photographed.
+    int minX = w;
+    int minY = h;
+    int maxX = -1;
+    int maxY = -1;
+    int fgCount = 0;
+
+    // Radius-3 connectivity so small specks outside the card can't pull the
+    // bbox outward toward the frame edge.
+    const r = 3;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (!closed[y * w + x]) continue;
+        final x0 = (x - r).clamp(0, w - 1);
+        final y0 = (y - r).clamp(0, h - 1);
+        final x1 = (x + r).clamp(0, w - 1);
+        final y1 = (y + r).clamp(0, h - 1);
+        if (x0 < minX) minX = x0;
+        if (y0 < minY) minY = y0;
+        if (x1 > maxX) maxX = x1;
+        if (y1 > maxY) maxY = y1;
+        fgCount++;
+      }
+    }
+
+    // Require at least a handful of edge pixels; otherwise the scene is too
+    // low-contrast to say anything useful.
+    final minimum = (w * h * 0.01).ceil().clamp(8, 200);
+    if (fgCount < minimum) return null;
+
+    final bw = maxX - minX + 1;
+    final bh = maxY - minY + 1;
+    if (bw < 50 || bh < 30) return null;
+
+    // Keep a minimum 4:10 margin around the raw bbox (card edges often end
+    // up *just* outside the detected edge cluster due to blurring/smoothing)
+    // so the final output doesn't clip the card corners.
+    final mx = (bw * 0.06).ceil();
+    final my = (bh * 0.06).ceil();
+    final x = (minX - mx).clamp(0, w - 1);
+    final y = (minY - my).clamp(0, h - 1);
+    final endX = (maxX + mx).clamp(0, w - 1);
+    final endY = (maxY + my).clamp(0, h - 1);
+    return (x, y, endX - x + 1, endY - y + 1);
+  }
+
+  /// Crops an axis-aligned rectangle out of an image. Result has the same
+  /// number of channels as the source; any coordinates that would go out of
+  /// range are clamped.
+  static imgpkg.Image _boundingBoxCrop(
+      imgpkg.Image srcImg, int x, int y, int width, int height) {
+    final sw = srcImg.width;
+    final sh = srcImg.height;
+    final x0 = x.clamp(0, sw - 1);
+    final y0 = y.clamp(0, sh - 1);
+    final x1 = (x + width).clamp(x0 + 1, sw);
+    final y1 = (y + height).clamp(y0 + 1, sh);
+    final cw = x1 - x0;
+    final ch = y1 - y0;
+    final dst = imgpkg.Image(
+      width: cw,
+      height: ch,
+      numChannels: srcImg.numChannels,
+    );
+    for (int yy = 0; yy < ch; yy++) {
+      for (int xx = 0; xx < cw; xx++) {
+        dst.setPixel(xx, yy, srcImg.getPixel(x0 + xx, y0 + yy));
+      }
+    }
+    return dst;
+  }
 }

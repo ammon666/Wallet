@@ -215,17 +215,10 @@ class _IssuerBadge extends StatelessWidget {
       height: 28,
     );
     if (icon != null) {
-      return Container(
-        constraints: const BoxConstraints(maxWidth: 170),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
-            width: 0.5,
-          ),
-        ),
+      // 发卡行 SVG 图标：与卡组织（_NetworkLogo）保持一致的视觉效果，
+      // 不加任何外框/背景，直接展示。只加 maxWidth 约束防止超长 logo 溢出。
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 180),
         child: icon,
       );
     }
