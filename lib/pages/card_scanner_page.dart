@@ -1,54 +1,332 @@
+import 'dart:io';
+
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_credit_card_scanner/credit_card_scanner.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 
 /// Modes the scanner page can run in.
-///
-/// - [fullCard]: Scan card number + expiry + holder name. Returned via
-///   [CardScannerResult] from `Navigator.pop`.
-/// - [numberOnly]: Scan only the card number. Returned as a plain `String`
-///   from `Navigator.pop`.
 enum CardScannerMode { fullCard, numberOnly }
 
 /// Data returned from the full-card scanner.
-///
-/// Any field may be null if the OCR engine couldn't read it; the form should
-/// leave its existing controller value alone in that case.
 class CardScannerResult {
-  final String? number;       // digits only, no spaces
-  final String? expiry;       // "MM/YY" canonical format
-  final String? holderName;   // "JOHN DOE" style; may be null
+  final String? number;
+  final String? expiry; // "MM/YY"
+  final String? holderName;
 
-  const CardScannerResult({
-    this.number,
-    this.expiry,
-    this.holderName,
-  });
+  const CardScannerResult({this.number, this.expiry, this.holderName});
 }
 
-/// A full-screen card scanner page powered by `flutter_credit_card_scanner`.
-///
-/// This delegates ALL edge detection + OCR to the native ML Kit / Apple
-/// Vision pipeline inside the package — we no longer attempt our own Dart
-/// Sobel/contour edge detection or custom OCR regex parsing.
-///
-/// The package's `CameraScannerWidget` runs a real-time camera stream and
-/// invokes [CameraScannerWidget.onScan] once a Luhn-valid card number is
-/// detected. We then pop the result back to the caller.
-///
-/// This is 100% offline: the ML Kit text recognition model is bundled into
-/// the APK via the gradle dependency (no INTERNET permission required).
+/// Luhn checksum validation for card numbers.
+bool _luhnCheck(String digits) {
+  if (digits.length < 13 || digits.length > 19) return false;
+  int sum = 0;
+  bool alternate = false;
+  for (int i = digits.length - 1; i >= 0; i--) {
+    int n = int.parse(digits[i]);
+    if (alternate) {
+      n *= 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+    alternate = !alternate;
+  }
+  return sum % 10 == 0;
+}
+
+/// Extract a valid card number from OCR text.
+/// Collects all digit sequences across the entire text, joins nearby groups,
+/// and returns the first Luhn-valid 13-19 digit string.
+String? _extractCardNumber(String fullText) {
+  // Normalize: replace common OCR confusions
+  String normalized = fullText
+      .replaceAll('O', '0')
+      .replaceAll('o', '0')
+      .replaceAll('I', '1')
+      .replaceAll('l', '1')
+      .replaceAll('B', '8')
+      .replaceAll(RegExp(r'[^0-9\s\-]'), ' ');
+
+  // Extract all contiguous digit groups
+  final groups = RegExp(r'\d{4,}')
+      .allMatches(normalized)
+      .map((m) => m.group(0)!)
+      .toList();
+
+  if (groups.isEmpty) return null;
+
+  // Strategy 1: single group of 13-19 digits
+  for (final g in groups) {
+    final d = g.replaceAll(RegExp(r'\D'), '');
+    if (d.length >= 13 && d.length <= 19 && _luhnCheck(d)) return d;
+  }
+
+  // Strategy 2: concatenate consecutive 4-digit groups (common card format: XXXX XXXX XXXX XXXX)
+  for (int i = 0; i < groups.length; i++) {
+    final buf = StringBuffer();
+    for (int j = i; j < groups.length; j++) {
+      final d = groups[j].replaceAll(RegExp(r'\D'), '');
+      if (d.length > 4 && j > i) break;
+      if (d.length < 3) break;
+      buf.write(d);
+      final total = buf.toString();
+      if (total.length >= 13 && total.length <= 19 && _luhnCheck(total)) {
+        return total;
+      }
+      if (total.length > 19) break;
+    }
+  }
+
+  // Strategy 3: take all digits from the whole text, scan for valid subsequences
+  final allDigits = normalized.replaceAll(RegExp(r'\D'), '');
+  if (allDigits.length >= 13) {
+    for (int len = 19; len >= 13; len--) {
+      for (int start = 0; start + len <= allDigits.length; start++) {
+        final candidate = allDigits.substring(start, start + len);
+        if (_luhnCheck(candidate)) return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+/// Extract expiry date in MM/YY format.
+String? _extractExpiry(String fullText) {
+  // Patterns: MM/YY, MM/YYYY, MM-YY, MM-YYYY
+  final patterns = [
+    RegExp(r'(\d{2})[/\-](\d{2,4})'),
+  ];
+  for (final p in patterns) {
+    for (final m in p.allMatches(fullText)) {
+      int? month = int.tryParse(m.group(1)!);
+      String yearStr = m.group(2)!;
+      if (month == null || month < 1 || month > 12) continue;
+      String yy;
+      if (yearStr.length == 4) {
+        yy = yearStr.substring(2);
+      } else if (yearStr.length == 2) {
+        yy = yearStr;
+      } else {
+        continue;
+      }
+      int? year = int.tryParse(yy);
+      if (year == null) continue;
+      // Basic sanity: year between 20 and 40 (2020-2040)
+      if (year < 20 || year > 40) continue;
+      return '${month.toString().padLeft(2, '0')}/$yy';
+    }
+  }
+  return null;
+}
+
+/// Extract cardholder name (uppercase words with spaces, no digits).
+String? _extractHolderName(String fullText) {
+  final lines = fullText.split('\n');
+  for (final line in lines) {
+    final trimmed = line.trim();
+    if (trimmed.length < 5) continue;
+    if (trimmed.contains(RegExp(r'[0-9]'))) continue;
+    // Must be mostly uppercase letters with spaces
+    if (RegExp(r'^[A-Z][A-Z\s\.\-]+$').hasMatch(trimmed)) {
+      final words = trimmed.split(RegExp(r'\s+')).where((w) => w.length >= 2).toList();
+      if (words.length >= 2) {
+        // Exclude common non-name words
+        final exclude = {'VALID', 'THRU', 'GOOD', 'FROM', 'MONTH', 'YEAR', 'DATE', 'MEMBER', 'SINCE', 'BANK', 'CARD'};
+        final filtered = words.where((w) => !exclude.contains(w)).toList();
+        if (filtered.length >= 2) return filtered.join(' ');
+      }
+    }
+  }
+  return null;
+}
+
 class CardScannerPage extends StatefulWidget {
   final CardScannerMode mode;
-
   const CardScannerPage({super.key, required this.mode});
 
   @override
   State<CardScannerPage> createState() => _CardScannerPageState();
 }
 
-class _CardScannerPageState extends State<CardScannerPage> {
+class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingObserver {
+  CameraController? _controller;
+  final _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+  bool _isInitializing = true;
+  bool _isProcessing = false;
   bool _returned = false;
+  String? _detectedNumber;
+
+  // Detection state accumulates best results across frames
+  String? _bestNumber;
+  String? _bestExpiry;
+  String? _bestName;
+  int _stableFrames = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeCamera();
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context)!.scannerNoCameraFound)),
+          );
+          Navigator.pop(context);
+        }
+        return;
+      }
+
+      final backCamera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      final controller = CameraController(
+        backCamera,
+        ResolutionPreset.high,
+        enableAudio: false,
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.nv21
+            : ImageFormatGroup.bgra8888,
+      );
+
+      await controller.initialize();
+      if (!mounted) return;
+
+      _controller = controller;
+      setState(() => _isInitializing = false);
+
+      await controller.startImageStream(_processImage);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context)!.scannerNoCameraFound)),
+        );
+        Navigator.pop(context);
+      }
+    }
+  }
+
+  void _processImage(CameraImage image) async {
+    if (_isProcessing || _returned) return;
+    _isProcessing = true;
+
+    try {
+      final inputImage = _convertCameraImage(image);
+      if (inputImage == null) return;
+
+      final recognizedText = await _textRecognizer.processImage(inputImage);
+      final text = recognizedText.text;
+
+      final number = _extractCardNumber(text);
+      final expiry = widget.mode == CardScannerMode.fullCard ? _extractExpiry(text) : null;
+      final name = widget.mode == CardScannerMode.fullCard ? _extractHolderName(text) : null;
+
+      if (number != null) {
+        // Stable detection: same number seen for a few frames = reliable
+        if (_bestNumber == number) {
+          _stableFrames++;
+        } else {
+          _bestNumber = number;
+          _stableFrames = 1;
+        }
+        if (expiry != null) _bestExpiry = expiry;
+        if (name != null) _bestName = name;
+
+        if (mounted) {
+          setState(() => _detectedNumber = number);
+        }
+
+        // Require stability: number detected consistently for N frames
+        // For numberOnly mode: 3 frames is enough
+        // For fullCard mode: 5 frames (also try to get expiry/name)
+        final requiredFrames = widget.mode == CardScannerMode.numberOnly ? 3 : 5;
+        if (_stableFrames >= requiredFrames) {
+          _returnResult();
+        }
+      } else {
+        _stableFrames = 0;
+        if (mounted && _detectedNumber != null) {
+          setState(() => _detectedNumber = null);
+        }
+      }
+    } catch (_) {
+      // Ignore frame processing errors
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  InputImage? _convertCameraImage(CameraImage image) {
+    final controller = _controller;
+    if (controller == null) return null;
+
+    final camera = controller.description;
+    final rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation);
+    if (rotation == null) return null;
+
+    InputImageFormat format;
+    if (Platform.isAndroid) {
+      format = InputImageFormat.nv21;
+    } else {
+      format = InputImageFormat.bgra8888;
+    }
+
+    if (image.planes.isEmpty) return null;
+    final plane = image.planes.first;
+
+    return InputImage.fromBytes(
+      bytes: plane.bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: format,
+        bytesPerRow: plane.bytesPerRow,
+      ),
+    );
+  }
+
+  void _returnResult() {
+    if (_returned) return;
+    _returned = true;
+    _controller?.stopImageStream();
+
+    if (widget.mode == CardScannerMode.numberOnly) {
+      Navigator.pop(context, _bestNumber);
+    } else {
+      Navigator.pop(context, CardScannerResult(
+        number: _bestNumber,
+        expiry: _bestExpiry,
+        holderName: _bestName,
+      ));
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (state == AppLifecycleState.inactive) {
+      controller.stopImageStream();
+    } else if (state == AppLifecycleState.resumed) {
+      controller.startImageStream(_processImage);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller?.dispose();
+    _textRecognizer.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +334,9 @@ class _CardScannerPageState extends State<CardScannerPage> {
     final title = widget.mode == CardScannerMode.numberOnly
         ? l.scannerTitleNumberOnly
         : l.scannerTitleFront;
+    final hint = widget.mode == CardScannerMode.numberOnly
+        ? l.scannerHintNumberOnly
+        : l.scannerHintFront;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -70,53 +351,11 @@ class _CardScannerPageState extends State<CardScannerPage> {
       ),
       body: Stack(
         children: [
-          // Real-time camera scanner. onScan fires when a Luhn-valid card
-          // number is read; we convert it to our result type and pop.
-          CameraScannerWidget(
-            onNoCamera: () {
-              if (!_returned && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(l.scannerNoCameraFound)),
-                );
-                Navigator.pop(context);
-              }
-            },
-            onScan: (ctx, cardModel) {
-              if (_returned || cardModel == null) return;
-              _returned = true;
-
-              if (widget.mode == CardScannerMode.numberOnly) {
-                if (cardModel.number.isEmpty) {
-                  _returned = false; // keep scanning for a valid number
-                  return;
-                }
-                Navigator.pop(ctx, cardModel.number);
-                return;
-              }
-
-              // fullCard mode — convert CreditCardModel → CardScannerResult.
-              //
-              // CreditCardModel.expiryDate returns "MM/YYYY" (4-digit year).
-              // Our form stores MM/YY (2-digit year), so we slice the year.
-              // Empty strings are converted to null so the form leaves existing
-              // controller values untouched.
-              String? expiry;
-              final expRaw = cardModel.expiryDate; // "MM/YYYY" or ""
-              if (expRaw.isNotEmpty && expRaw.contains('/')) {
-                final parts = expRaw.split('/');
-                if (parts.length == 2 && parts[0].length >= 2 && parts[1].length >= 4) {
-                  expiry = '${parts[0]}/${parts[1].substring(2)}'; // MM/YY
-                }
-              }
-
-              final result = CardScannerResult(
-                number: cardModel.number.isEmpty ? null : cardModel.number,
-                expiry: expiry,
-                holderName: cardModel.holderName.isEmpty ? null : cardModel.holderName,
-              );
-              Navigator.pop(ctx, result);
-            },
-            loadingHolder: Center(
+          // Camera preview
+          if (_controller != null && _controller!.value.isInitialized)
+            Positioned.fill(child: CameraPreview(_controller!)),
+          if (_isInitializing)
+            Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -129,34 +368,142 @@ class _CardScannerPageState extends State<CardScannerPage> {
                 ],
               ),
             ),
-            // Scan all fields by default; for numberOnly mode we still let
-            // the package scan everything and just discard what we don't
-            // need — simpler than re-configuring per-mode.
-            cardNumber: true,
-            cardHolder: widget.mode == CardScannerMode.fullCard,
-            cardExpiryDate: widget.mode == CardScannerMode.fullCard,
-            useLuhnValidation: true,
-          ),
 
-          // Overlay hint at the bottom telling the user what to do.
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.black54,
-              child: Text(
-                widget.mode == CardScannerMode.numberOnly
-                    ? l.scannerHintNumberOnly
-                    : l.scannerHintFront,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+          // Scanning overlay
+          if (!_isInitializing)
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _CardOverlayPainter(
+                  detectedNumber: _detectedNumber != null,
+                ),
               ),
             ),
-          ),
+
+          // Bottom hint bar
+          if (!_isInitializing)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.black54,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_detectedNumber != null) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            _formatCardNumber(_detectedNumber!),
+                            style: const TextStyle(
+                              color: Colors.greenAccent,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        l.scannerDetecting,
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ] else ...[
+                      Text(
+                        hint,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  String _formatCardNumber(String number) {
+    // Group into 4s
+    final buf = StringBuffer();
+    for (int i = 0; i < number.length; i++) {
+      if (i > 0 && i % 4 == 0) buf.write(' ');
+      buf.write(number[i]);
+    }
+    return buf.toString();
+  }
+}
+
+class _CardOverlayPainter extends CustomPainter {
+  final bool detectedNumber;
+  _CardOverlayPainter({required this.detectedNumber});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Semi-transparent overlay
+    final paint = Paint()..color = Colors.black.withValues(alpha: 0.6);
+
+    // Card frame dimensions (standard credit card aspect ratio ~1.586:1)
+    final cardWidth = size.width * 0.9;
+    final cardHeight = cardWidth / 1.586;
+    final cardLeft = (size.width - cardWidth) / 2;
+    final cardTop = (size.height - cardHeight) / 2 - size.height * 0.05;
+    final cardRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(cardLeft, cardTop, cardWidth, cardHeight),
+      const Radius.circular(16),
+    );
+
+    // Draw overlay with cutout
+    final path = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..addRRect(cardRect)
+      ..fillType = PathFillType.evenOdd;
+    canvas.drawPath(path, paint);
+
+    // Card frame border
+    final borderPaint = Paint()
+      ..color = detectedNumber ? Colors.greenAccent : Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = detectedNumber ? 3 : 2;
+    canvas.drawRRect(cardRect, borderPaint);
+
+    // Corner markers for guidance
+    final cornerPaint = Paint()
+      ..color = detectedNumber ? Colors.greenAccent : Colors.white
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    const cornerLen = 30.0;
+    // Top-left
+    canvas.drawLine(Offset(cardLeft, cardTop + cornerLen), Offset(cardLeft, cardTop), cornerPaint);
+    canvas.drawLine(Offset(cardLeft, cardTop), Offset(cardLeft + cornerLen, cardTop), cornerPaint);
+    // Top-right
+    canvas.drawLine(Offset(cardLeft + cardWidth - cornerLen, cardTop), Offset(cardLeft + cardWidth, cardTop), cornerPaint);
+    canvas.drawLine(Offset(cardLeft + cardWidth, cardTop), Offset(cardLeft + cardWidth, cardTop + cornerLen), cornerPaint);
+    // Bottom-left
+    canvas.drawLine(Offset(cardLeft, cardTop + cardHeight - cornerLen), Offset(cardLeft, cardTop + cardHeight), cornerPaint);
+    canvas.drawLine(Offset(cardLeft, cardTop + cardHeight), Offset(cardLeft + cornerLen, cardTop + cardHeight), cornerPaint);
+    // Bottom-right
+    canvas.drawLine(Offset(cardLeft + cardWidth - cornerLen, cardTop + cardHeight), Offset(cardLeft + cardWidth, cardTop + cardHeight), cornerPaint);
+    canvas.drawLine(Offset(cardLeft + cardWidth, cardTop + cardHeight - cornerLen), Offset(cardLeft + cardWidth, cardTop + cardHeight), cornerPaint);
+
+    // Scanning line indicator in center
+    if (!detectedNumber) {
+      canvas.drawRect(
+        Rect.fromLTWH(cardLeft, cardTop + cardHeight / 2, cardWidth, 2),
+        Paint()..color = Colors.white.withValues(alpha: 0.3),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CardOverlayPainter oldDelegate) {
+    return oldDelegate.detectedNumber != detectedNumber;
   }
 }

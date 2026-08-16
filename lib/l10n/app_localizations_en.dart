@@ -1494,6 +1494,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get scannerCameraInitializing => 'Starting camera…';
 
   @override
+  String get scannerDetecting => 'Detecting…';
+
+  @override
   String get scannerCameraPermissionDenied =>
       'Camera permission denied — enable it in Settings';
 

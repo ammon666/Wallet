@@ -2942,6 +2942,12 @@ abstract class AppLocalizations {
   /// **'Starting camera…'**
   String get scannerCameraInitializing;
 
+  /// No description provided for @scannerDetecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Detecting…'**
+  String get scannerDetecting;
+
   /// No description provided for @scannerCameraPermissionDenied.
   ///
   /// In en, this message translates to:

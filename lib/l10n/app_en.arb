@@ -656,6 +656,7 @@
   "scannerOcrFailed": "OCR failed",
   "scannerCaptureFailed": "Capture failed",
   "scannerCameraInitializing": "Starting camera…",
+  "scannerDetecting": "Detecting…",
   "scannerCameraPermissionDenied": "Camera permission denied — enable it in Settings",
   "scannerNoCameraFound": "No camera available on this device",
   "scannerUnknownError": "Unknown error",

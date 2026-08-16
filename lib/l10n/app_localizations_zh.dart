@@ -1368,13 +1368,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get filterType => '类型';
 
   @override
-  String get filterAllNetworks => '全部卡组织';
+  String get filterAllNetworks => '卡组织';
 
   @override
-  String get filterAllIssuers => '全部发卡行';
+  String get filterAllIssuers => '发卡行';
 
   @override
-  String get filterAllCardTypes => '全部卡类型';
+  String get filterAllCardTypes => '卡类型';
 
   @override
   String get actionArchive => '归档';
@@ -1414,22 +1414,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get unknownIssuer => '未知发卡行';
 
   @override
-  String get scannerTitleFront => '拍摄卡片正面';
+  String get scannerTitleFront => '扫描卡片正面';
 
   @override
-  String get scannerTitleBack => '拍摄卡片背面';
+  String get scannerTitleBack => '扫描卡片背面';
 
   @override
   String get scannerTitleNumberOnly => '扫描卡号';
 
   @override
-  String get scannerHintFront => '将卡片对齐绿色边框内，然后点击底部快门拍摄';
+  String get scannerHintFront => '将卡片对齐框内，保持平稳，自动识别';
 
   @override
-  String get scannerHintBack => '将卡片背面（签名条+CVV区）对齐绿色边框内拍摄';
+  String get scannerHintBack => '将卡背面 CVV 区对准框内，自动识别';
 
   @override
-  String get scannerHintNumberOnly => '将卡号对齐矩形框内，点击快门拍摄识别';
+  String get scannerHintNumberOnly => '将卡号对准框内，保持平稳，自动识别';
 
   @override
   String get scannerShutterHint => '手动点击按钮拍照（对焦清晰后再拍）';
@@ -1466,6 +1466,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get scannerCameraInitializing => '正在启动相机…';
+
+  @override
+  String get scannerDetecting => '识别中…';
 
   @override
   String get scannerCameraPermissionDenied => '相机权限被拒绝，请到系统设置开启';
