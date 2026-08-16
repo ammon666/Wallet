@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:wallet/l10n/app_localizations.dart';
@@ -10,7 +9,6 @@ import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/models/theme_provider.dart';
 import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/services/card_utils.dart';
-import 'package:wallet/services/image_processing_service.dart';
 import 'package:wallet/services/image_service.dart';
 import 'package:wallet/widgets/color_picker.dart';
 import 'package:wallet/widgets/form_section.dart';
@@ -112,100 +110,24 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     return 19;
   }
 
-  Future<void> _showImageSourceDialog(bool isFront) async {
-    final l = AppLocalizations.of(context)!;
-    final source = await showDialog<ImageSource>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF0A0A0A)
-            : Colors.white,
-        title: Text(l.selectImageSource),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: Text(l.chooseFromGallery),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: Text(l.takePhoto),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source != null) {
-      await _pickImage(source, isFront);
-    }
-  }
-
-  Future<void> _pickImage(ImageSource source, bool isFront) async {
+  /// 直接从相册选择卡片图片（移除了裁切功能与"拍照/相册"来源选择对话框）。
+  Future<void> _pickFromGallery(bool isFront) async {
     final pickedFile = await _picker.pickImage(
-      source: source,
+      source: ImageSource.gallery,
       maxWidth: 2400,
       maxHeight: 2400,
       imageQuality: 92,
     );
-    if (pickedFile == null) return;
-    if (!mounted) return;
+    if (pickedFile == null || !mounted) return;
 
-    final l = AppLocalizations.of(context)!;
-    // Show loading while running offline edge/crop pipeline.
-    final dialog = showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 16),
-              Flexible(child: Text(l.processing)),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    try {
-      final rawBytes = await File(pickedFile.path).readAsBytes();
-      final processedBytes = await ImageProcessingService.instance
-          .processCardPhoto(rawBytes);
-      final directory = await getApplicationDocumentsDirectory();
-      final tempName =
-          'proc_${DateTime.now().microsecondsSinceEpoch}${p.extension(pickedFile.path)}';
-      final tempPath = p.join(directory.path, tempName);
-      final tempFile = await File(tempPath).writeAsBytes(processedBytes);
-
-      setState(() {
-        if (isFront) {
-          _frontImageFile = tempFile;
-        } else {
-          _backImageFile = tempFile;
-        }
-      });
-    } catch (_) {
-      // Fallback: keep the original photo without processing.
-      setState(() {
-        if (isFront) {
-          _frontImageFile = File(pickedFile.path);
-        } else {
-          _backImageFile = File(pickedFile.path);
-        }
-      });
-    } finally {
-      Navigator.of(context).pop();
-    }
+    setState(() {
+      final file = File(pickedFile.path);
+      if (isFront) {
+        _frontImageFile = file;
+      } else {
+        _backImageFile = file;
+      }
+    });
   }
 
   void _addData() async {
@@ -535,14 +457,15 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                 ImagePickerWidget(
                   title: l.frontImage,
                   imageFile: _frontImageFile,
-                  onPickImage: () => _showImageSourceDialog(true),
+                  // 直接打开相册，不再弹出"拍照/相册"来源选择。
+                  onPickImage: () => _pickFromGallery(true),
                   onRemoveImage: () => setState(() => _frontImageFile = null),
                 ),
                 const SizedBox(height: 16),
                 ImagePickerWidget(
                   title: l.backImage,
                   imageFile: _backImageFile,
-                  onPickImage: () => _showImageSourceDialog(false),
+                  onPickImage: () => _pickFromGallery(false),
                   onRemoveImage: () => setState(() => _backImageFile = null),
                 ),
               ],

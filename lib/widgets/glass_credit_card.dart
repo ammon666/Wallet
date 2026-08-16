@@ -94,29 +94,36 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _IssuerBadge(
+                      // Top-left: 发卡行图标（与右上角卡组织使用同样 36dp 外层容器，
+                      // 高度标尺对齐，视觉上完全对称。）
+                      SizedBox(
+                        height: 36,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _IssuerBadge(
                             issuer: widget.wallet.issuer,
                             network: widget.wallet.network,
                           ),
-                          if (widget.wallet.cardCategory != null) ...[
-                            const SizedBox(height: 4),
-                            _CardCategoryBadge(
-                              category: widget.wallet.cardCategory!,
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
+                      // Top-right: 卡组织 logo
                       SizedBox(
                         height: 36,
-                        child: _NetworkLogo(network: widget.wallet.network),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: _NetworkLogo(network: widget.wallet.network),
+                        ),
                       ),
                     ],
                   ),
+                  if (widget.wallet.cardCategory != null) ...[
+                    const SizedBox(height: 6),
+                    _CardCategoryBadge(
+                      category: widget.wallet.cardCategory!,
+                    ),
+                  ],
                   const Spacer(),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -212,15 +219,12 @@ class _IssuerBadge extends StatelessWidget {
     final icon = BrandIconService.instance.buildIssuerIcon(
       context,
       (issuer != null && issuer!.trim().isNotEmpty) ? issuer : null,
-      height: 28,
+      // 与卡组织 buildNetworkIcon 的默认 height 完全一致，保证大小标尺对齐。
+      height: 30,
     );
     if (icon != null) {
-      // 发卡行 SVG 图标：与卡组织（_NetworkLogo）保持一致的视觉效果，
-      // 不加任何外框/背景，直接展示。只加 maxWidth 约束防止超长 logo 溢出。
-      return ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 180),
-        child: icon,
-      );
+      // 与卡组织（_NetworkLogo）保持一致：不加任何外框/背景，直接展示。
+      return icon;
     }
     final raw = (issuer != null && issuer!.trim().isNotEmpty)
         ? issuer!.trim()

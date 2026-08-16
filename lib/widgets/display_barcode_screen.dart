@@ -133,9 +133,13 @@ class _DisplayBarcodeScreenState extends State<DisplayBarcodeScreen> {
           ),
           // Copy button
           GestureDetector(
-            onTap: () {
-              ClipboardService.instance.copy(widget.barcodeData);
-              ScaffoldMessenger.of(context).showSnackBar(
+            onTap: () async {
+              final copied =
+                  await ClipboardService.instance.copy(widget.barcodeData);
+              if (!copied || !mounted) return;
+              final messenger = ScaffoldMessenger.of(context);
+              messenger.hideCurrentSnackBar();
+              messenger.showSnackBar(
                 SnackBar(
                   behavior: SnackBarBehavior.floating,
                   margin: const EdgeInsets.all(16),

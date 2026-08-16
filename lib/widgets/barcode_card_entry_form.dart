@@ -2,13 +2,11 @@ import 'dart:io';
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/services/barcode_decoder_service.dart';
 import 'package:wallet/services/barcode_utils.dart';
-import 'package:wallet/services/image_processing_service.dart';
 import 'package:wallet/services/image_service.dart';
 import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/widgets/barcode_card.dart';
@@ -247,92 +245,21 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
     } catch (_) {}
   }
 
-  Future<void> _pickImage(bool isFront) async {
-    await _showImageSourceDialog(isFront);
-  }
-
-  Future<void> _showImageSourceDialog(bool isFront) async {
-    final l = AppLocalizations.of(context)!;
-    final source = await showDialog<ImageSource>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF0A0A0A)
-            : Colors.white,
-        title: Text(l.selectImageSource),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: Text(l.chooseFromGallery),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: Text(l.takePhoto),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source != null) {
-      await _pickAndProcessImage(source, isFront);
-    }
-  }
-
-  Future<void> _pickAndProcessImage(ImageSource source, bool isFront) async {
+  /// 直接从相册选择附件图片（移除了裁切功能与"拍照/相册"来源选择对话框）。
+  ///
+  /// 仍然会把原图通过 [saveImageToAppDirectory] 加密保存到应用目录。
+  Future<void> _pickFromGallery(bool isFront) async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
-      source: source,
+      source: ImageSource.gallery,
       maxWidth: 2400,
       maxHeight: 2400,
       imageQuality: 92,
     );
-    if (pickedFile == null) return;
-    if (!mounted) return;
+    if (pickedFile == null || !mounted) return;
 
-    final l = AppLocalizations.of(context)!;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 16),
-              Flexible(child: Text(l.processing)),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    File? tempFile;
-    try {
-      final rawBytes = await File(pickedFile.path).readAsBytes();
-      final processedBytes = await ImageProcessingService.instance
-          .processCardPhoto(rawBytes);
-      final directory = await getApplicationDocumentsDirectory();
-      final tempName =
-          'proc_${DateTime.now().microsecondsSinceEpoch}${p.extension(pickedFile.path)}';
-      final tempPath = p.join(directory.path, tempName);
-      tempFile = await File(tempPath).writeAsBytes(processedBytes);
-    } catch (_) {
-      tempFile = File(pickedFile.path);
-    } finally {
-      Navigator.of(context).pop();
-    }
-
-    final encryptedPath = await saveImageToAppDirectory(tempFile);
+    final encryptedPath =
+        await saveImageToAppDirectory(File(pickedFile.path));
     setState(() {
       if (isFront) {
         _frontImagePath = encryptedPath;
@@ -1027,7 +954,8 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
               child: _buildImagePickerTile(
                 l.frontSide,
                 _frontImagePath,
-                () => _pickImage(true),
+                // 直接打开相册：跳过"拍照/相册"来源选择，并移除裁切处理。
+                () => _pickFromGallery(true),
                 isDark,
               ),
             ),
@@ -1036,7 +964,7 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
               child: _buildImagePickerTile(
                 l.backSide,
                 _backImagePath,
-                () => _pickImage(false),
+                () => _pickFromGallery(false),
                 isDark,
               ),
             ),

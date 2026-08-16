@@ -209,13 +209,17 @@ class BrandIconService {
 
   /// Renders the issuer icon for [issuerName] inside a fixed bounding box.
   ///
+  /// Height is deliberately pinned to the same default (30) used by
+  /// [buildNetworkIcon] so the two top-corner badges share a consistent
+  /// visual "ruler" / scale on the card face.
+  ///
   /// Returns `null` when the issuer is not bundled so the caller can fall
   /// back to text (matching the original `_IssuerBadge` contract).
   Widget? buildIssuerIcon(
     BuildContext context,
     String? issuerName, {
     double width = 160,
-    double height = 28,
+    double height = 30,
   }) {
     final svg = getIssuerSvg(issuerName);
     if (svg == null) return null;

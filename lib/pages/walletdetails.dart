@@ -216,9 +216,15 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
           GlassCreditCard(
             isMasked: false,
             wallet: currentWallet,
-            onCardTap: () {
-              ClipboardService.instance.copy(currentWallet.number);
-              ScaffoldMessenger.of(context).showSnackBar(
+            onCardTap: () async {
+              final copied =
+                  await ClipboardService.instance.copy(currentWallet.number);
+              if (!copied || !mounted) return;
+              final messenger = ScaffoldMessenger.of(context);
+              // Always dismiss any existing toast first so rapid taps don't
+              // queue up multiple "已复制" SnackBars on top of each other.
+              messenger.hideCurrentSnackBar();
+              messenger.showSnackBar(
                 SnackBar(content: Text(l.cardNumberCopiedBang)),
               );
             },
@@ -262,11 +268,15 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
                     ),
                     // Tap CVV text to copy (Feature 3: removed copy button)
                     GestureDetector(
-                      onTap: () {
+                      onTap: () async {
                         final cvv = currentWallet.cvv;
                         if (cvv == null || cvv.isEmpty) return;
-                        ClipboardService.instance.copy(cvv);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        final copied =
+                            await ClipboardService.instance.copy(cvv);
+                        if (!copied || !mounted) return;
+                        final messenger = ScaffoldMessenger.of(context);
+                        messenger.hideCurrentSnackBar();
+                        messenger.showSnackBar(
                           SnackBar(content: Text(l.cvvCopied)),
                         );
                       },
