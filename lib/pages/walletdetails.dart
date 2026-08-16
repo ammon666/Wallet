@@ -226,7 +226,10 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
               // queue up multiple "已复制" SnackBars on top of each other.
               messenger.hideCurrentSnackBar();
               messenger.showSnackBar(
-                SnackBar(content: Text(l.cardNumberCopiedBang)),
+                SnackBar(
+                  content: Text(l.cardNumberCopiedBang),
+                  duration: const Duration(seconds: 2),
+                ),
               );
             },
           ),
@@ -258,53 +261,7 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
                 ),
               ],
             ),
-          _LiquidGlassDetailSection(
-            title: l.walletDetailFinancials,
-            icon: Icons.account_balance_wallet_outlined,
-            children: [
-              _LiquidGlassDetailTile(
-                icon: Icons.credit_score_outlined,
-                title: l.financialMaxLimit,
-                value: '$symbol${currentWallet.maxlimit ?? l.naValue}',
-              ),
-              _LiquidGlassDetailTile(
-                icon: Icons.receipt_long_outlined,
-                title: l.financialAnnualSpends,
-                value: '$symbol${currentWallet.spends ?? '0.00'}',
-              ),
-              _LiquidGlassDetailTile(
-                icon: Icons.card_giftcard_outlined,
-                title: l.financialEstimatedCashback,
-                value: _formatCashback(
-                  currentWallet.spends,
-                  currentWallet.rewards,
-                  symbol,
-                ),
-                valueColor: Colors.green.shade400,
-              ),
-            ],
-          ),
-          _LiquidGlassDetailSection(
-            title: l.walletDetailBillingTerms,
-            icon: Icons.event_note_outlined,
-            children: [
-              _LiquidGlassDetailTile(
-                icon: Icons.calendar_today_outlined,
-                title: l.financialBillDate,
-                value: l.billEveryDate(currentWallet.billdate ?? l.naValue),
-              ),
-              _LiquidGlassDetailTile(
-                icon: Icons.verified_outlined,
-                title: l.financialAnnualFeeWaiver,
-                value: _getFeeWaiverStatus(currentWallet, symbol, l),
-              ),
-              _LiquidGlassDetailTile(
-                icon: Icons.credit_card_outlined,
-                title: l.financialCardType,
-                value: currentWallet.cardtype ?? l.naValue,
-              ),
-            ],
-          ),
+          // 财务信息和账单条款已移除
           if (currentWallet.customFields != null &&
               currentWallet.customFields!.isNotEmpty)
             _LiquidGlassDetailSection(
@@ -892,68 +849,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                 ),
               ],
             ),
-            _LiquidGlassDetailSection(
-              title: l.walletDetailFinancials,
-              icon: Icons.account_balance_wallet_outlined,
-              children: [
-                _buildTextField(
-                  _maxlimitController,
-                  l.maxLimitField(symbol),
-                  isDark,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  _spendsController,
-                  l.currentSpendsField(symbol),
-                  isDark,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  _rewardsController,
-                  l.cashbackRateField,
-                  isDark,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(2),
-                  ],
-                ),
-              ],
-            ),
-            _LiquidGlassDetailSection(
-              title: l.walletDetailBillingTerms,
-              icon: Icons.event_note_outlined,
-              children: [
-                _buildTextField(
-                  _billdateController,
-                  l.billDateField,
-                  isDark,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(2),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  _annualFeeWaiverController,
-                  l.annualFeeWaiverField(symbol),
-                  isDark,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  _cardtypeController,
-                  l.cardTypeField,
-                  isDark,
-                ),
-              ],
-            ),
+            // 财务信息和账单条款已移除
             _LiquidGlassDetailSection(
               title: l.walletDetailCustomFields,
               icon: Icons.tune_outlined,
