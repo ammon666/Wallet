@@ -24,10 +24,16 @@ class ImageProcessingService {
   static final ImageProcessingService instance = ImageProcessingService._();
 
   Future<List<int>> processCardPhoto(List<int> inputBytes) async {
-    final src = imgpkg.decodeImage(Uint8List.fromList(inputBytes));
-    if (src == null) return inputBytes;
-    final result = await detectAndCropCard(src);
-    return imgpkg.encodeJpg(result.image, quality: 92);
+    try {
+      final src = imgpkg.decodeImage(Uint8List.fromList(inputBytes));
+      if (src == null) return inputBytes;
+      final result = await detectAndCropCard(src);
+      return imgpkg.encodeJpg(result.image, quality: 92);
+    } catch (_) {
+      // Any failure at the outer layer should still return the original bytes
+      // rather than throw; callers are free to re-encode if they wish.
+      return inputBytes;
+    }
   }
 
   Future<CardCropResult> detectAndCropCard(imgpkg.Image src) async {

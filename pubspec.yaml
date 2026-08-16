@@ -52,6 +52,7 @@ flutter:
   assets:
     - assets/
     - assets/network/
+    - assets/icons/
 
   fonts:
     - family: ZSpace

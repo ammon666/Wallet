@@ -66,7 +66,7 @@ class BrandIconService {
 
     void flushSvg() {
       if (currentName != null && buf.isNotEmpty) {
-        out[_normalizeName(currentName!)] = buf.toString();
+        out[_normalizeName(currentName!)] = _sanitizeSvg(buf.toString());
       }
       buf.clear();
       inSvg = false;
@@ -133,7 +133,7 @@ class BrandIconService {
     }
     // End of file: flush whatever was in progress.
     if (currentName != null && buf.isNotEmpty) {
-      out[_normalizeName(currentName!)] = buf.toString();
+      out[_normalizeName(currentName!)] = _sanitizeSvg(buf.toString());
     }
     return out;
   }
@@ -228,5 +228,49 @@ class BrandIconService {
         ),
       ),
     );
+  }
+
+  /// Strips explicit `width=".."` / `height=".."` attributes from the root
+  /// `<svg>` tag so that the flutter_svg widget's size parameters take full
+  /// control (otherwise the bundled SVGs' `width="200"` / `height="200"` can
+  /// interfere with the fixed-height rendering and cause clipping or
+  /// inconsistently-sized badges).
+  ///
+  /// Also strips the `t=".."` / `p-id=".."` attributes which are non-standard
+  /// carry-overs from iconfont exports that flutter_svg doesn't need.
+  static String _sanitizeSvg(String rawSvg) {
+    if (rawSvg.isEmpty) return rawSvg;
+    const svgTag = r'<svg\s+';
+    final match = RegExp(svgTag, caseSensitive: false).firstMatch(rawSvg);
+    if (match == null) return rawSvg;
+
+    final start = match.start;
+    // Find the end of the opening <svg ...> tag
+    int i = match.end;
+    int depth = 1;
+    while (i < rawSvg.length && depth > 0) {
+      final ch = rawSvg[i];
+      if (ch == '<') {
+        break;
+      }
+      if (ch == '>') {
+        i++;
+        break;
+      }
+      i++;
+    }
+    final head = rawSvg.substring(0, start);
+    final tag = rawSvg.substring(start, i);
+    final tail = rawSvg.substring(i);
+
+    // Remove width / height (both quotes), and t / p-id attributes.
+    final attrRe = RegExp(
+      r'''\s(?:width|height|t|p-id)\s*=\s*(?:"[^"]*"|'[^']*')''',
+      caseSensitive: false,
+      dotAll: false,
+    );
+    final cleanedTag = tag.replaceAllMapped(attrRe, (_) => '');
+
+    return '$head$cleanedTag$tail';
   }
 }
