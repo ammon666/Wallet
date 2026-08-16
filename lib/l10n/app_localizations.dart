@@ -2983,6 +2983,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Scan card number'**
   String get scanCardNumberTooltip;
+
+  /// No description provided for @splashAuthRequiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Authentication Required'**
+  String get splashAuthRequiredTitle;
+
+  /// No description provided for @splashAuthRequiredMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You must authenticate to use the wallet app. Please try again or exit.'**
+  String get splashAuthRequiredMessage;
+
+  /// No description provided for @splashAuthRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get splashAuthRetry;
+
+  /// No description provided for @splashAuthExit.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit'**
+  String get splashAuthExit;
 }
 
 class _AppLocalizationsDelegate

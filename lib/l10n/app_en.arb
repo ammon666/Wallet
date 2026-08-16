@@ -664,5 +664,10 @@
 
   "addCardActionScan": "Scan to add card",
   "@addCardActionScan": {"description": "Tooltip for scan entry-point button in Add card screen"},
-  "scanCardNumberTooltip": "Scan card number"
+  "scanCardNumberTooltip": "Scan card number",
+
+  "splashAuthRequiredTitle": "Authentication Required",
+  "splashAuthRequiredMessage": "You must authenticate to use the wallet app. Please try again or exit.",
+  "splashAuthRetry": "Retry",
+  "splashAuthExit": "Exit"
 }

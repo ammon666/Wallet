@@ -1514,4 +1514,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get scanCardNumberTooltip => 'Scan card number';
+
+  @override
+  String get splashAuthRequiredTitle => 'Authentication Required';
+
+  @override
+  String get splashAuthRequiredMessage =>
+      'You must authenticate to use the wallet app. Please try again or exit.';
+
+  @override
+  String get splashAuthRetry => 'Retry';
+
+  @override
+  String get splashAuthExit => 'Exit';
 }

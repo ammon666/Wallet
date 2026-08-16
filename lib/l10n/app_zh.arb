@@ -543,5 +543,10 @@
   "scannerCameraInitFailed": "相机启动失败",
 
   "addCardActionScan": "扫描添加卡片",
-  "scanCardNumberTooltip": "扫描识别卡号"
+  "scanCardNumberTooltip": "扫描识别卡号",
+
+  "splashAuthRequiredTitle": "需要验证",
+  "splashAuthRequiredMessage": "必须通过身份验证才能使用钱包应用。请重试或退出。",
+  "splashAuthRetry": "重试",
+  "splashAuthExit": "退出"
 }

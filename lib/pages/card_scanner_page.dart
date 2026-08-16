@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:wallet/l10n/app_localizations.dart';
@@ -162,6 +164,9 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
   String? _bestExpiry;
   String? _bestName;
   int _stableFrames = 0;
+  DateTime? _firstDetectionTime;
+  static const _requiredStableFrames = 3;
+  static const _maxWaitMs = 8000; // 8 seconds max wait before returning best result
 
   @override
   void initState() {
@@ -229,30 +234,47 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
       final expiry = widget.mode == CardScannerMode.fullCard ? _extractExpiry(text) : null;
       final name = widget.mode == CardScannerMode.fullCard ? _extractHolderName(text) : null;
 
+      final now = DateTime.now();
+
       if (number != null) {
-        // Stable detection: same number seen for a few frames = reliable
-        if (_bestNumber == number) {
-          _stableFrames++;
-        } else {
+        // Initialize first detection time if not set
+        _firstDetectionTime ??= now;
+
+        // Check if new number is similar to best number (compatible detection)
+        final isSimilar = _numbersAreSimilar(_bestNumber, number);
+
+        if (_bestNumber == null || !isSimilar) {
+          // New/different number - reset stable frames to 1
           _bestNumber = number;
           _stableFrames = 1;
+        } else {
+          // Same or similar number detected - increment stable frames
+          _stableFrames++;
+          // Keep the longer/more complete number as best
+          if (number.length > _bestNumber!.length) {
+            _bestNumber = number;
+          }
         }
+
         if (expiry != null) _bestExpiry = expiry;
         if (name != null) _bestName = name;
 
         if (mounted) {
-          setState(() => _detectedNumber = number);
+          setState(() => _detectedNumber = _bestNumber);
         }
 
-        // Require stability: number detected consistently for N frames
-        // For numberOnly mode: 3 frames is enough
-        // For fullCard mode: 5 frames (also try to get expiry/name)
-        final requiredFrames = widget.mode == CardScannerMode.numberOnly ? 3 : 5;
-        if (_stableFrames >= requiredFrames) {
+        // Check if we should return result
+        final elapsed = now.difference(_firstDetectionTime!).inMilliseconds;
+        final shouldReturnByStability = _stableFrames >= _requiredStableFrames;
+        final shouldReturnByTimeout = elapsed >= _maxWaitMs && _stableFrames >= 1;
+
+        if (shouldReturnByStability || shouldReturnByTimeout) {
           _returnResult();
         }
       } else {
+        // No valid number in this frame
         _stableFrames = 0;
+        _firstDetectionTime = null;
         if (mounted && _detectedNumber != null) {
           setState(() => _detectedNumber = null);
         }
@@ -262,6 +284,45 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
     } finally {
       _isProcessing = false;
     }
+  }
+
+  /// Check if two card numbers are "similar" - meaning they likely represent
+  /// the same card but with minor OCR differences (one digit off, missing/extra digit)
+  bool _numbersAreSimilar(String? a, String? b) {
+    if (a == null || b == null) return false;
+    if (a == b) return true;
+
+    // If one contains the other (e.g., "123456789012345" vs "1234567890123456")
+    if (a.contains(b) || b.contains(a)) return true;
+
+    // If lengths are same and differ by at most 1 digit (allowing for single OCR error)
+    if (a.length == b.length) {
+      int diffs = 0;
+      for (int i = 0; i < a.length; i++) {
+        if (a[i] != b[i]) diffs++;
+        if (diffs > 1) return false;
+      }
+      return diffs <= 1;
+    }
+
+    // If lengths differ by at most 1, check common substring alignment
+    if ((a.length - b.length).abs() == 1) {
+      final shorter = a.length < b.length ? a : b;
+      final longer = a.length > b.length ? a : b;
+      // Check if shorter matches starting at position 0 or 1 in longer
+      for (int offset = 0; offset <= 1; offset++) {
+        bool matches = true;
+        for (int i = 0; i < shorter.length; i++) {
+          if (longer[i + offset] != shorter[i]) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches) return true;
+      }
+    }
+
+    return false;
   }
 
   InputImage? _convertCameraImage(CameraImage image) {
@@ -280,15 +341,32 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
     }
 
     if (image.planes.isEmpty) return null;
-    final plane = image.planes.first;
+
+    // For NV21 on Android, we need to concatenate all planes
+    // because Y and UV data are in separate planes
+    late final Uint8List bytes;
+    late final int bytesPerRow;
+
+    if (Platform.isAndroid) {
+      // Concatenate all planes for NV21 format
+      final WriteBuffer allBytes = WriteBuffer();
+      for (final Plane plane in image.planes) {
+        allBytes.putUint8List(plane.bytes);
+      }
+      bytes = allBytes.done().buffer.asUint8List();
+      bytesPerRow = image.planes[0].bytesPerRow;
+    } else {
+      bytes = image.planes.first.bytes;
+      bytesPerRow = image.planes.first.bytesPerRow;
+    }
 
     return InputImage.fromBytes(
-      bytes: plane.bytes,
+      bytes: bytes,
       metadata: InputImageMetadata(
         size: Size(image.width.toDouble(), image.height.toDouble()),
         rotation: rotation,
         format: format,
-        bytesPerRow: plane.bytesPerRow,
+        bytesPerRow: bytesPerRow,
       ),
     );
   }

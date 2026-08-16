@@ -212,11 +212,42 @@ class _SplashScreenState extends State<SplashScreen>
     bool canCheckBiometrics = await auth.canCheckBiometrics;
 
     if (isBiometricSupported && canCheckBiometrics) {
-      bool authenticated = await auth.authenticate(
-        localizedReason: AppLocalizations.of(context)!.splashAuthReason,
-        options: const AuthenticationOptions(stickyAuth: true),
-      );
-      if (authenticated) {
+      bool authenticated = false;
+      while (!authenticated && mounted) {
+        authenticated = await auth.authenticate(
+          localizedReason: AppLocalizations.of(context)!.splashAuthReason,
+          options: const AuthenticationOptions(
+            stickyAuth: true,
+            useErrorDialogs: true,
+          ),
+        );
+        if (!authenticated && mounted) {
+          // User canceled or failed - show dialog before exiting
+          final shouldExit = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: Text(AppLocalizations.of(context)!.splashAuthRequiredTitle),
+              content: Text(AppLocalizations.of(context)!.splashAuthRequiredMessage),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(AppLocalizations.of(context)!.splashAuthRetry),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(AppLocalizations.of(context)!.splashAuthExit),
+                ),
+              ],
+            ),
+          );
+          if (shouldExit == true) {
+            SystemNavigator.pop();
+            return;
+          }
+        }
+      }
+      if (authenticated && mounted) {
         _navigateToHomeScreen();
       }
     } else {

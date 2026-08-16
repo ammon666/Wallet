@@ -1487,4 +1487,16 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get scanCardNumberTooltip => '扫描识别卡号';
+
+  @override
+  String get splashAuthRequiredTitle => '需要验证';
+
+  @override
+  String get splashAuthRequiredMessage => '必须通过身份验证才能使用钱包应用。请重试或退出。';
+
+  @override
+  String get splashAuthRetry => '重试';
+
+  @override
+  String get splashAuthExit => '退出';
 }
