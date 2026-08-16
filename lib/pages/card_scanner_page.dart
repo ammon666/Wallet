@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:wallet/l10n/app_localizations.dart';
@@ -18,7 +19,7 @@ class CardScannerResult {
   final String? number;
   final String? expiry; // "MM/YY"
   final String? holderName;
-  final String? frontImagePath; // Path to captured card photo
+  final String? frontImagePath; // Path to captured (cropped+enhanced) card photo
 
   const CardScannerResult({
     this.number,
@@ -27,6 +28,10 @@ class CardScannerResult {
     this.frontImagePath,
   });
 }
+
+// =============================================================================
+//  Card number validation utilities
+// =============================================================================
 
 /// Luhn checksum validation for card numbers.
 bool _luhnCheck(String digits) {
@@ -45,172 +50,641 @@ bool _luhnCheck(String digits) {
   return sum % 10 == 0;
 }
 
-/// Extract a valid card number from OCR text.
-/// Uses a more robust strategy: collect all digit sequences, then try
-/// concatenating nearby groups to find a valid Luhn sequence.
-String? _extractCardNumber(String fullText) {
-  // Normalize: replace common OCR misreads
-  String normalized = fullText
-      .replaceAll('O', '0')
-      .replaceAll('o', '0')
-      .replaceAll('I', '1')
-      .replaceAll('l', '1')
-      .replaceAll('B', '8')
-      .replaceAll(RegExp(r'[^0-9\s\-]'), ' ');
+/// OCR character confusion mapping: common misreads for digits.
+const Map<String, String> _digitCorrections = {
+  'O': '0', 'o': '0', 'Q': '0', 'D': '0',
+  'I': '1', 'l': '1', 'i': '1', '|': '1', '!': '1',
+  'Z': '2', 'z': '2',
+  'E': '3', 'e': '3',
+  'A': '4', 'h': '4',
+  'S': '5', 's': '5',
+  'G': '6', 'b': '6',
+  'T': '7', '?': '7', '/': '7',
+  'B': '8', 'g': '9', 'q': '9',
+};
 
-  // Extract all digit groups (length >= 3 to filter out noise like "2", "02" from dates)
-  final groups = RegExp(r'\d{3,}')
-      .allMatches(normalized)
-      .map((m) => m.group(0)!.replaceAll(RegExp(r'\D'), ''))
-      .where((g) => g.length >= 3)
-      .toList();
+/// Normalize OCR text by replacing common misread characters with digits.
+String _normalizeOcrDigits(String text) {
+  final buf = StringBuffer();
+  for (int i = 0; i < text.length; i++) {
+    final ch = text[i];
+    if (RegExp(r'[0-9]').hasMatch(ch)) {
+      buf.write(ch);
+    } else if (_digitCorrections.containsKey(ch)) {
+      buf.write(_digitCorrections[ch]);
+    }
+    // Skip non-digit, non-correctable characters entirely
+  }
+  return buf.toString();
+}
 
-  if (groups.isEmpty) return null;
+// =============================================================================
+//  Coordinate transform utilities for ROI filtering
+// =============================================================================
 
-  // Strategy 1: single group of 13-19 digits with valid Luhn
-  for (final g in groups) {
-    if (g.length >= 13 && g.length <= 19 && _luhnCheck(g)) return g;
+/// Transform a point from raw sensor image coordinates to normalized (0-1)
+/// display coordinates, accounting for the camera sensor rotation.
+///
+/// [imgW]/[imgH] are the raw CameraImage dimensions (sensor native).
+Offset _normalizePoint(
+  double x, double y,
+  int imgW, int imgH,
+  InputImageRotation rotation,
+) {
+  double nx, ny;
+  switch (rotation) {
+    case InputImageRotation.rotation0deg:
+      nx = x / imgW;
+      ny = y / imgH;
+      break;
+    case InputImageRotation.rotation90deg:
+      // 90° clockwise: (x,y) → (y, W-x)
+      nx = y / imgH;
+      ny = (imgW - x) / imgW;
+      break;
+    case InputImageRotation.rotation180deg:
+      nx = (imgW - x) / imgW;
+      ny = (imgH - y) / imgH;
+      break;
+    case InputImageRotation.rotation270deg:
+      // 270° clockwise (= 90° counterclockwise): (x,y) → (H-y, x)
+      nx = (imgH - y) / imgH;
+      ny = x / imgW;
+      break;
+  }
+  return Offset(nx, ny);
+}
+
+/// Get the center point of a rectangle in normalized coordinates.
+Offset _normalizedCenterOfRect(
+  Rect rect,
+  int imgW, int imgH,
+  InputImageRotation rotation,
+) {
+  final cx = rect.left + rect.width / 2;
+  final cy = rect.top + rect.height / 2;
+  return _normalizePoint(cx, cy, imgW, imgH, rotation);
+}
+
+/// Compute the card overlay rectangle in normalized (0-1) display coordinates.
+///
+/// This must match the layout of [_CardOverlayPainter].
+Rect _cardRegionNormalized(double aspectRatio) {
+  // The overlay painter draws:
+  //   cardWidth  = size.width  * 0.9
+  //   cardHeight = cardWidth / 1.586
+  //   cardLeft   = (size.width  - cardWidth)  / 2
+  //   cardTop    = (size.height - cardHeight) / 2 - size.height * 0.05
+  //
+  // We normalize to the full widget (0,0)-(1,1).
+
+  const cardW = 0.9;
+  final cardH = cardW / 1.586;
+  final left = (1.0 - cardW) / 2;
+  final top = (1.0 - cardH) / 2 - 0.05;
+
+  // Use a slightly inset region (about 85% of card width) for more aggressive
+  // noise rejection around the card edges.
+  const padX = 0.04;
+  const padY = 0.04;
+  return Rect.fromLTWH(left + padX, top + padY, cardW - padX * 2, cardH - padY * 2);
+}
+
+// =============================================================================
+//  Per-digit voting across frames
+// =============================================================================
+
+class _DigitVoteTracker {
+  /// vote[i][d] = number of times digit d was observed at position i.
+  final List<List<int>> _votes = [];
+  int _totalVotes = 0;
+
+  void reset() {
+    _votes.clear();
+    _totalVotes = 0;
   }
 
-  // Strategy 2: concatenate consecutive groups to form 13-19 digit number
-  // Try starting from each group
-  for (int start = 0; start < groups.length; start++) {
+  int get totalVotes => _totalVotes;
+
+  void vote(String number) {
+    // Ensure we have enough slots
+    while (_votes.length < number.length) {
+      _votes.add(List.filled(10, 0));
+    }
+    for (int i = 0; i < number.length; i++) {
+      final d = int.tryParse(number[i]);
+      if (d != null && d >= 0 && d <= 9) {
+        _votes[i][d]++;
+      }
+    }
+    _totalVotes++;
+  }
+
+  /// Get the consensus number. Returns null if there aren't enough votes.
+  String? getConsensus(int minVotes) {
+    if (_totalVotes < minVotes) return null;
+    // Find the most common length: the position of the last vote that
+    // has significant data.
+    int maxLen = 0;
+    for (int i = 0; i < _votes.length; i++) {
+      final sum = _votes[i].reduce((a, b) => a + b);
+      if (sum >= minVotes) maxLen = i + 1;
+    }
+    if (maxLen < 13) return null; // Too short for a valid card number
+
     final buf = StringBuffer();
-    for (int end = start; end < groups.length; end++) {
-      buf.write(groups[end]);
-      final candidate = buf.toString();
-      if (candidate.length > 19) break;
-      if (candidate.length >= 13 && candidate.length <= 19 && _luhnCheck(candidate)) {
-        return candidate;
+    for (int i = 0; i < maxLen; i++) {
+      int bestDigit = 0;
+      int bestCount = -1;
+      for (int d = 0; d < 10; d++) {
+        if (_votes[i][d] > bestCount) {
+          bestCount = _votes[i][d];
+          bestDigit = d;
+        }
+      }
+      // Require that the best digit got at least 40% of votes at this position
+      final totalAtPos = _votes[i].reduce((a, b) => a + b);
+      if (bestCount < totalAtPos * 0.4) return null;
+      buf.write(bestDigit);
+    }
+    final result = buf.toString();
+    if (result.length >= 13 && result.length <= 19 && _luhnCheck(result)) {
+      return result;
+    }
+    return null;
+  }
+}
+
+// =============================================================================
+//  Card number / expiry / name extraction from RecognizedText
+// =============================================================================
+
+/// Extract the most likely card number from OCR text, filtering by position
+/// using the card region ROI.
+String? _extractCardNumberFromText(
+  RecognizedText recognizedText,
+  int imgW, int imgH,
+  InputImageRotation rotation,
+  double screenAspectRatio,
+) {
+  final cardRegion = _cardRegionNormalized(screenAspectRatio);
+
+  // Collect all digit sequences from elements that fall within the card region.
+  final candidates = <String>[];
+  final inCardDigitSequences = <String>[];
+
+  for (final block in recognizedText.blocks) {
+    for (final line in block.lines) {
+      // Check position: line center must be within card region
+      final center = _normalizedCenterOfRect(
+        line.boundingBox, imgW, imgH, rotation,
+      );
+
+      // Card numbers typically appear in the lower 2/3 of the card region.
+      // The card region in normalized coords: from (left,top) to (right,bottom).
+      // Card numbers are usually in the vertical 30%-80% range of the card face.
+      final inCardRegion = cardRegion.contains(center);
+      final inCardNumberZone = inCardRegion &&
+          center.dy >= cardRegion.top + cardRegion.height * 0.2 &&
+          center.dy <= cardRegion.bottom - cardRegion.height * 0.05;
+
+      // Concatenate all text in this line and extract digits
+      final lineText = line.elements.map((e) => e.text).join('');
+      final digits = _normalizeOcrDigits(lineText);
+
+      if (digits.length >= 4) {
+        if (inCardNumberZone) {
+          inCardDigitSequences.add(digits);
+        }
+        // Also collect as fallback candidate
+        candidates.add(digits);
       }
     }
   }
 
-  // Strategy 3: if we have groups that look like 4x4 card number formatting
-  // (four groups of 4 digits), concatenate them
-  for (int i = 0; i + 3 < groups.length; i++) {
-    if (groups[i].length == 4 && groups[i+1].length == 4 &&
-        groups[i+2].length == 4 && groups[i+3].length == 4) {
-      final candidate = groups[i] + groups[i+1] + groups[i+2] + groups[i+3];
-      if (_luhnCheck(candidate)) return candidate;
+  // Strategy 1: Concatenate consecutive 4-digit groups in the card number zone
+  // (this matches the standard "1234 5678 9012 3456" formatting).
+  final zoneGroups = inCardDigitSequences
+      .where((s) => s.length == 4)
+      .toList();
+  if (zoneGroups.length >= 4) {
+    for (int start = 0; start + 3 < zoneGroups.length; start++) {
+      final candidate = zoneGroups.sublist(start, start + 4).join();
+      if (candidate.length == 16 && _luhnCheck(candidate)) {
+        return candidate;
+      }
+    }
+    // Try 3+4+4+4+... patterns (15-19 digit cards)
+    for (int start = 0; start < zoneGroups.length; start++) {
+      final buf = StringBuffer(zoneGroups[start]);
+      for (int end = start + 1; end < zoneGroups.length; end++) {
+        buf.write(zoneGroups[end]);
+        final c = buf.toString();
+        if (c.length > 19) break;
+        if (c.length >= 13 && c.length <= 19 && _luhnCheck(c)) {
+          return c;
+        }
+      }
     }
   }
 
-  // Strategy 4: take all digits combined, then scan for any 13-19 subsequence
-  // that passes Luhn. Use as fallback.
-  final allDigits = normalized.replaceAll(RegExp(r'\D'), '');
+  // Strategy 2: Concatenate ALL in-region digit sequences
+  if (inCardDigitSequences.isNotEmpty) {
+    final allInRegion = inCardDigitSequences.join();
+    if (allInRegion.length >= 13 && allInRegion.length <= 19 && _luhnCheck(allInRegion)) {
+      return allInRegion;
+    }
+    // Scan for any valid 13-19 digit subsequence
+    for (int len = 19; len >= 13; len--) {
+      for (int start = 0; start + len <= allInRegion.length; start++) {
+        final c = allInRegion.substring(start, start + len);
+        if (_luhnCheck(c)) return c;
+      }
+    }
+  }
+
+  // Strategy 3: Single long digit group (sometimes OCR doesn't split groups)
+  for (final digits in candidates) {
+    if (digits.length >= 13 && digits.length <= 19 && _luhnCheck(digits)) {
+      return digits;
+    }
+  }
+
+  // Strategy 4: Concatenate all candidates and search
+  final allDigits = candidates.join();
   if (allDigits.length >= 13) {
-    // Prefer the longest valid subsequence, but also prefer 16-digit (most common)
+    // Prefer 16-digit numbers, then longest valid
     String? best16;
-    String? bestLongest;
+    String? best;
     int bestLen = 0;
     for (int len = 19; len >= 13; len--) {
       for (int start = 0; start + len <= allDigits.length; start++) {
-        final candidate = allDigits.substring(start, start + len);
-        if (_luhnCheck(candidate)) {
-          if (len == 16 && best16 == null) best16 = candidate;
+        final c = allDigits.substring(start, start + len);
+        if (_luhnCheck(c)) {
+          if (len == 16 && best16 == null) best16 = c;
           if (len > bestLen) {
             bestLen = len;
-            bestLongest = candidate;
+            best = c;
           }
         }
       }
     }
-    return best16 ?? bestLongest;
+    return best16 ?? best;
   }
 
   return null;
 }
 
-/// Extract expiry date in MM/YY format.
-String? _extractExpiry(String fullText) {
-  // Look for patterns like MM/YY, MM/YYYY, MM-YY, MM-YYYY
-  final patterns = [
-    RegExp(r'(\d{2})[/\-](\d{2,4})'),
-    // Also look for "VALID THRU 02/25" or "MONTH/YEAR" style
-    RegExp(r'(\d{2})(\d{2})', multiLine: false), // MMYY without separator (ambiguous, low priority)
-  ];
+/// Extract expiry date in MM/YY format, preferring text in the card region.
+String? _extractExpiryFromText(
+  RecognizedText recognizedText,
+  int imgW, int imgH,
+  InputImageRotation rotation,
+  double screenAspectRatio,
+) {
+  final cardRegion = _cardRegionNormalized(screenAspectRatio);
+  // Expiry is typically in the lower portion of the card, below the card number.
+  final expiryRegion = Rect.fromLTWH(
+    cardRegion.left,
+    cardRegion.top + cardRegion.height * 0.45,
+    cardRegion.width,
+    cardRegion.height * 0.5,
+  );
 
-  for (final p in patterns) {
-    for (final m in p.allMatches(fullText)) {
-      int? month = int.tryParse(m.group(1)!);
-      String yearStr = m.group(2)!;
-      if (month == null || month < 1 || month > 12) continue;
-      String yy;
-      if (yearStr.length == 4) {
-        yy = yearStr.substring(2);
-      } else if (yearStr.length == 2) {
-        yy = yearStr;
-      } else {
-        continue;
+  final expiryPattern = RegExp(r'(\d{2})\s*[/\-–—]\s*(\d{2,4})');
+  final mmYyPattern = RegExp(r'(0[1-9]|1[0-2])\s*(\d{2})'); // MMYY without separator
+
+  // First try within the expiry zone
+  for (final block in recognizedText.blocks) {
+    for (final line in block.lines) {
+      final center = _normalizedCenterOfRect(
+        line.boundingBox, imgW, imgH, rotation,
+      );
+      if (!expiryRegion.contains(center)) continue;
+
+      final text = line.text;
+      // Check for MM/YY or MM/YYYY pattern
+      final m1 = expiryPattern.firstMatch(text);
+      if (m1 != null) {
+        final month = int.tryParse(m1.group(1)!);
+        var yearStr = m1.group(2)!;
+        if (month != null && month >= 1 && month <= 12) {
+          if (yearStr.length == 4) yearStr = yearStr.substring(2);
+          final year = int.tryParse(yearStr);
+          if (year != null && year >= 20 && year <= 40) {
+            return '${month.toString().padLeft(2, '0')}/$yearStr';
+          }
+        }
       }
-      int? year = int.tryParse(yy);
-      if (year == null) continue;
-      // Accept years 2020-2040 (20-40 in 2-digit format)
-      if (year < 20 || year > 40) continue;
-      return '${month.toString().padLeft(2, '0')}/$yy';
-    }
-  }
-  return null;
-}
-
-/// Extract cardholder name (uppercase words with spaces, no digits).
-String? _extractHolderName(String fullText) {
-  final lines = fullText.split('\n');
-  // Common keywords that appear near/on cards that should NOT be treated as names
-  final excludeWords = {
-    'VALID', 'THRU', 'GOOD', 'FROM', 'MONTH', 'YEAR', 'DATE', 'MEMBER',
-    'SINCE', 'BANK', 'CARD', 'CREDIT', 'DEBIT', 'VISA', 'MASTERCARD',
-    'AMEX', 'AMERICAN', 'EXPRESS', 'DISCOVER', 'UNIONPAY', 'RUPAY',
-    'JCB', 'DINERS', 'CLUB', 'INTERNATIONAL', 'INC', 'CORP', 'CORPORATION',
-    'LTD', 'LIMITED', 'THE', 'AND', 'OR', 'OF', 'CHINA', 'PAY',
-    'SERVICE', 'SERVICES', 'CARDHOLDER', 'AUTHORIZED',
-    'SIGNATURE', 'NUMBER', 'EXPIRES', 'END', 'START',
-    'ELECTRONIC', 'USE', 'ONLY', 'WORLDWIDE', 'ACCOUNT',
-    'SECURITY', 'CODE', 'PLEASE', 'SEE', 'REVERSE', 'NOT', 'TRANSFERABLE',
-    'PLATINUM', 'GOLD', 'SILVER', 'CLASSIC', 'STANDARD', 'PREMIUM',
-    'BUSINESS', 'TITANIUM', 'INFINITE',
-    'WORLD', 'ELITE', 'PRIORITY', 'SELECT', 'ADVANTAGE', 'PREFERRED',
-    'MR', 'MRS', 'MS', 'DR', // Titles that may appear but are not full names alone
-  };
-
-  String? bestCandidate;
-
-  for (final line in lines) {
-    final trimmed = line.trim();
-    if (trimmed.length < 5) continue;
-    // Must contain at least one space (at least first + last name)
-    if (!trimmed.contains(' ')) continue;
-    // Must be mostly uppercase letters
-    if (!RegExp(r'^[A-Z][A-Z\s\.\-]+$').hasMatch(trimmed)) continue;
-    // Must not contain digits
-    if (trimmed.contains(RegExp(r'[0-9]'))) continue;
-
-    final words = trimmed.split(RegExp(r'\s+')).where((w) => w.length >= 2).toList();
-    if (words.length < 2) continue;
-
-    // Filter out common non-name words
-    final filtered = words.where((w) {
-      // Remove words with dots (initials like "J.")
-      if (w.contains('.')) return false;
-      return !excludeWords.contains(w.toUpperCase());
-    }).toList();
-
-    if (filtered.length >= 2) {
-      final candidate = filtered.join(' ');
-      // Prefer longer names, but avoid lines that are mostly keywords
-      if (candidate.length >= 5 && candidate.length <= 30) {
-        // Prefer candidates that look like real names (2-4 words, proper length)
-        if (bestCandidate == null ||
-            (filtered.length >= 2 && candidate.length > bestCandidate.length && candidate.length < 30)) {
-          bestCandidate = candidate;
+      // Check for MMYY without separator
+      final m2 = mmYyPattern.firstMatch(_normalizeOcrDigits(text));
+      if (m2 != null) {
+        final month = int.tryParse(m2.group(1)!);
+        final yearStr = m2.group(2)!;
+        if (month != null && month >= 1 && month <= 12) {
+          final year = int.tryParse(yearStr);
+          if (year != null && year >= 20 && year <= 40) {
+            return '${month.toString().padLeft(2, '0')}/$yearStr';
+          }
         }
       }
     }
   }
 
-  return bestCandidate;
+  // Fallback: search all text
+  for (final block in recognizedText.blocks) {
+    for (final line in block.lines) {
+      final m = expiryPattern.firstMatch(line.text);
+      if (m != null) {
+        final month = int.tryParse(m.group(1)!);
+        var yearStr = m.group(2)!;
+        if (month != null && month >= 1 && month <= 12) {
+          if (yearStr.length == 4) yearStr = yearStr.substring(2);
+          final year = int.tryParse(yearStr);
+          if (year != null && year >= 20 && year <= 40) {
+            return '${month.toString().padLeft(2, '0')}/$yearStr';
+          }
+        }
+      }
+    }
+  }
+
+  return null;
 }
+
+/// Extract cardholder name (uppercase Latin words), preferring the bottom area
+/// of the card where names are typically printed.
+String? _extractHolderNameFromText(
+  RecognizedText recognizedText,
+  int imgW, int imgH,
+  InputImageRotation rotation,
+  double screenAspectRatio,
+) {
+  final cardRegion = _cardRegionNormalized(screenAspectRatio);
+  // Name is typically in the lower 30% of the card
+  final nameRegion = Rect.fromLTWH(
+    cardRegion.left,
+    cardRegion.top + cardRegion.height * 0.65,
+    cardRegion.width,
+    cardRegion.height * 0.35,
+  );
+
+  final excludeWords = <String>{
+    'VALID', 'THRU', 'GOOD', 'FROM', 'MONTH', 'YEAR', 'DATE', 'MEMBER',
+    'SINCE', 'BANK', 'CARD', 'CREDIT', 'DEBIT', 'VISA', 'MASTERCARD',
+    'AMEX', 'AMERICAN', 'EXPRESS', 'DISCOVER', 'UNIONPAY', 'RUPAY', 'JCB',
+    'DINERS', 'CLUB', 'INTERNATIONAL', 'INC', 'CORP', 'CORPORATION', 'LTD',
+    'LIMITED', 'THE', 'AND', 'OR', 'OF', 'CHINA', 'PAY', 'SERVICE', 'SERVICES',
+    'CARDHOLDER', 'AUTHORIZED', 'SIGNATURE', 'NUMBER', 'EXPIRES', 'END', 'START',
+    'ELECTRONIC', 'USE', 'ONLY', 'WORLDWIDE', 'ACCOUNT', 'SECURITY', 'CODE',
+    'PLEASE', 'SEE', 'REVERSE', 'NOT', 'TRANSFERABLE', 'PLATINUM', 'GOLD',
+    'SILVER', 'CLASSIC', 'STANDARD', 'PREMIUM', 'BUSINESS', 'TITANIUM',
+    'INFINITE', 'WORLD', 'ELITE', 'PRIORITY', 'SELECT', 'ADVANTAGE',
+    'PREFERRED', 'MR', 'MRS', 'MS', 'DR', 'ATM', 'ELECTRON', 'PURSE',
+    'CHIP', 'CONTACTLESS', 'PAYPASS', 'VAPAY', 'THROUGH',
+  };
+
+  String? bestInRegion;
+  String? bestAnywhere;
+
+  for (final block in recognizedText.blocks) {
+    for (final line in block.lines) {
+      final text = line.text.trim();
+      if (text.length < 5) continue;
+      if (text.contains(RegExp(r'[0-9]'))) continue;
+      // Must look like a name: mostly uppercase letters, at least 2 words
+      final words = text
+          .toUpperCase()
+          .split(RegExp(r'\s+'))
+          .where((w) => w.length >= 2)
+          .where((w) => RegExp(r"^[A-Z][A-Z\.\-']*$").hasMatch(w))
+          .where((w) => !excludeWords.contains(w.replaceAll('.', '')))
+          .toList();
+      if (words.length < 2) continue;
+      final candidate = words.join(' ');
+      if (candidate.length < 5 || candidate.length > 40) continue;
+
+      final center = _normalizedCenterOfRect(
+        line.boundingBox, imgW, imgH, rotation,
+      );
+      if (nameRegion.contains(center)) {
+        if (bestInRegion == null || candidate.length > bestInRegion.length) {
+          bestInRegion = candidate;
+        }
+      } else if (cardRegion.contains(center)) {
+        if (bestAnywhere == null || candidate.length > bestAnywhere.length) {
+          bestAnywhere = candidate;
+        }
+      }
+    }
+  }
+
+  return bestInRegion ?? bestAnywhere;
+}
+
+// =============================================================================
+//  Image processing helpers for captured photos
+// =============================================================================
+
+/// Crop a high-resolution photo to the card region and enhance it.
+/// Returns the path to the saved cropped image, or null if processing fails.
+Future<String?> _cropAndEnhancePhoto(String photoPath) async {
+  try {
+    final photoBytes = await File(photoPath).readAsBytes();
+    final image = img.decodeImage(photoBytes);
+    if (image == null) return null;
+
+    // Compute the card crop rectangle matching the overlay proportions.
+    final w = image.width;
+    final h = image.height;
+
+    const cardWRatio = 0.9;
+    final cardHRatio = cardWRatio / 1.586;
+    final cardW = (w * cardWRatio).toInt();
+    final cardH = (w * cardHRatio).toInt();
+    final cardX = ((w - cardW) / 2).round();
+    final cardY = ((h - cardH) / 2 - h * 0.05).round();
+
+    // Clamp to image bounds
+    final cropX = cardX.clamp(0, w - 1);
+    final cropY = cardY.clamp(0, h - 1);
+    final cropW = cardW.clamp(1, w - cropX);
+    final cropH = cardH.clamp(1, h - cropY);
+
+    var cropped = img.copyCrop(image, x: cropX, y: cropY, width: cropW, height: cropH);
+
+    // Apply contrast enhancement for better OCR
+    cropped = img.adjustColor(cropped, contrast: 1.5);
+
+    final tempDir = await getTemporaryDirectory();
+    final fileName = 'card_final_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final savedPath = path.join(tempDir.path, fileName);
+    final jpgBytes = img.encodeJpg(cropped, quality: 90);
+    await File(savedPath).writeAsBytes(jpgBytes);
+    return savedPath;
+  } catch (e) {
+    debugPrint('Card photo crop/enhance failed: $e');
+    return null;
+  }
+}
+
+/// Run OCR on a still image file (high resolution, after cropping/enhancement).
+/// Returns a CardScannerResult with the extracted fields.
+Future<CardScannerResult?> _ocrStillImage(String imagePath) async {
+  try {
+    // First decode the image to get its actual dimensions
+    final imageBytes = await File(imagePath).readAsBytes();
+    final decodedImage = img.decodeImage(imageBytes);
+    if (decodedImage == null) return null;
+
+    final imgH = decodedImage.height.toDouble();
+
+    final inputImage = InputImage.fromFilePath(imagePath);
+    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    try {
+      final recognizedText = await textRecognizer.processImage(inputImage);
+
+      String? number;
+      String? expiry;
+      String? name;
+
+      // Strategy: look for digit groups forming a card number across all lines
+      final allDigitGroups = <String>[];
+      for (final block in recognizedText.blocks) {
+        for (final line in block.lines) {
+          // Prefer lines in the card number zone (vertical 35%-70% of image)
+          final lineCenterY = line.boundingBox.center.dy;
+          final normalizedY = lineCenterY / imgH;
+
+          final lineText = line.elements.map((e) => e.text).join('');
+          final digits = _normalizeOcrDigits(lineText);
+          if (digits.length >= 4) {
+            // Give positional weight (in card number zone = higher priority)
+            if (normalizedY >= 0.30 && normalizedY <= 0.75) {
+              allDigitGroups.insert(0, digits);
+            } else {
+              allDigitGroups.add(digits);
+            }
+          }
+
+          // Look for expiry date (lower portion of image: 50%-90%)
+          if (normalizedY >= 0.50 && normalizedY <= 0.92) {
+            final ep = RegExp(r'(\d{2})\s*[/\-–—]\s*(\d{2,4})').firstMatch(lineText);
+            if (ep != null) {
+              final month = int.tryParse(ep.group(1)!);
+              var yearStr = ep.group(2)!;
+              if (month != null && month >= 1 && month <= 12) {
+                if (yearStr.length == 4) yearStr = yearStr.substring(2);
+                final year = int.tryParse(yearStr);
+                if (year != null && year >= 20 && year <= 40) {
+                  expiry = '${month.toString().padLeft(2, '0')}/$yearStr';
+                }
+              }
+            }
+            // Also try MMYY without separator
+            final mmyy = RegExp(r'(0[1-9]|1[0-2])\s*(\d{2})').firstMatch(_normalizeOcrDigits(lineText));
+            if (mmyy != null && expiry == null) {
+              final month = int.tryParse(mmyy.group(1)!);
+              final yearStr = mmyy.group(2)!;
+              if (month != null && month >= 1 && month <= 12) {
+                final year = int.tryParse(yearStr);
+                if (year != null && year >= 20 && year <= 40) {
+                  expiry = '${month.toString().padLeft(2, '0')}/$yearStr';
+                }
+              }
+            }
+          }
+
+          // Look for name (bottom of image: 60%-98%, no digits, multiple words)
+          if (normalizedY >= 0.60 && normalizedY <= 0.98) {
+            final trimmed = line.text.trim();
+            if (trimmed.length >= 5 && !trimmed.contains(RegExp(r'[0-9]'))) {
+              final words = trimmed
+                  .toUpperCase()
+                  .split(RegExp(r'\s+'))
+                  .where((w) => w.length >= 2)
+                  .where((w) => RegExp(r"^[A-Z][A-Z\.\-']*$").hasMatch(w))
+                  .where((w) => !_containsExcludedWord(w))
+                  .toList();
+              if (words.length >= 2) {
+                final candidate = words.join(' ');
+                if (candidate.length >= 5 && candidate.length < 40) {
+                  name = candidate;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Try to find a valid card number from collected digit groups
+      // First try: concatenate 4-digit groups (standard card formatting)
+      final groups4 = allDigitGroups.where((g) => g.length == 4).toList();
+      if (groups4.length >= 4) {
+        for (int start = 0; start + 3 < groups4.length; start++) {
+          final c = groups4.sublist(start, start + 4).join();
+          if (c.length == 16 && _luhnCheck(c)) {
+            number = c;
+            break;
+          }
+        }
+      }
+      // Second try: any single long group that passes Luhn
+      if (number == null) {
+        for (final g in allDigitGroups) {
+          if (g.length >= 13 && g.length <= 19 && _luhnCheck(g)) {
+            number = g;
+            break;
+          }
+        }
+      }
+      // Third try: concatenate all and search for valid subsequence
+      if (number == null) {
+        final allDigits = allDigitGroups.join();
+        for (int len = 19; len >= 13; len--) {
+          for (int start = 0; start + len <= allDigits.length; start++) {
+            final c = allDigits.substring(start, start + len);
+            if (_luhnCheck(c)) {
+              number = c;
+              break;
+            }
+          }
+          if (number != null) break;
+        }
+      }
+
+      return CardScannerResult(
+        number: number,
+        expiry: expiry,
+        holderName: name,
+      );
+    } finally {
+      textRecognizer.close();
+    }
+  } catch (e) {
+    debugPrint('Still image OCR failed: $e');
+    return null;
+  }
+}
+
+bool _containsExcludedWord(String word) {
+  const excluded = <String>{
+    'VALID', 'THRU', 'MONTH', 'YEAR', 'MEMBER', 'SINCE', 'BANK', 'CARD',
+    'CREDIT', 'DEBIT', 'VISA', 'MASTERCARD', 'SIGNATURE', 'AUTHORIZED',
+    'AMEX', 'AMERICAN', 'EXPRESS', 'UNIONPAY', 'DISCOVER', 'JCB', 'DINERS',
+    'CLUB', 'INTERNATIONAL', 'CHINA', 'PAY', 'PLATINUM', 'GOLD', 'SILVER',
+    'CLASSIC', 'STANDARD', 'PREMIUM', 'BUSINESS', 'TITANIUM', 'WORLD',
+    'ELITE', 'PRIORITY', 'SELECT', 'PREFERRED', 'CHIP', 'CONTACTLESS',
+    'PAYPASS', 'VAPAY', 'ELECTRON', 'PURSE', 'ATM',
+    'GOOD', 'FROM', 'THROUGH', 'DATE', 'START', 'END',
+  };
+  final upper = word.toUpperCase().replaceAll('.', '');
+  return excluded.contains(upper);
+}
+
+// =============================================================================
+//  Main scanner page
+// =============================================================================
 
 class CardScannerPage extends StatefulWidget {
   final CardScannerMode mode;
@@ -227,21 +701,33 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
   bool _isProcessing = false;
   bool _returned = false;
   bool _isCapturing = false;
+
+  // Detection state for real-time preview
   String? _detectedNumber;
+  String? _previewExpiry;
+  String? _previewName;
+  _ScanState _scanState = _ScanState.searching;
 
-  // Detection state
-  String? _bestNumber;
-  String? _bestExpiry;
-  String? _bestName;
-  int _stableFrames = 0;
-  int _missedFrames = 0; // consecutive frames without a valid number
-  DateTime? _firstDetectionTime;
+  // Multi-frame voting
+  final _voteTracker = _DigitVoteTracker();
+  String? _votedNumber;
+
+  // Frame counter for skip logic
+  int _frameCounter = 0;
+
+  // Cached screen size for ROI calculations
+  Size? _screenSize;
+
+  // Camera/image properties
+  int _imgW = 0;
+  int _imgH = 0;
+  InputImageRotation _rotation = InputImageRotation.rotation0deg;
+
+  // Global timeout
   Timer? _globalTimeoutTimer;
-
-  static const _requiredStableFrames = 2; // be less strict: 2 similar frames
-  static const _detectionTimeoutMs = 6000; // 6s of valid detection to return
-  static const _globalTimeoutMs = 12000; // absolute max 12s in scanner
-  static const _maxMissedFrames = 4; // allow up to 4 missed frames before resetting
+  static const _globalTimeoutMs = 15000;
+  static const _stableVoteThreshold = 3;
+  static const _frameSkip = 2; // Process every 3rd frame
 
   @override
   void initState() {
@@ -252,9 +738,7 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
   }
 
   void _startGlobalTimeout() {
-    _globalTimeoutTimer = Timer(Duration(milliseconds: _globalTimeoutMs), () {
-      // Global timeout: if we haven't returned yet after max time, force return
-      // with whatever we have (even if null)
+    _globalTimeoutTimer = Timer(const Duration(milliseconds: _globalTimeoutMs), () {
       if (!_returned && mounted) {
         _captureAndReturn();
       }
@@ -281,7 +765,7 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
 
       final controller = CameraController(
         backCamera,
-        ResolutionPreset.high,
+        ResolutionPreset.medium, // 720p - much faster than high, sufficient for OCR
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid
             ? ImageFormatGroup.nv21
@@ -292,9 +776,22 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
       if (!mounted) return;
 
       _controller = controller;
+
+      // Cache rotation value
+      _rotation = InputImageRotationValue.fromRawValue(
+            backCamera.sensorOrientation,
+          ) ??
+          InputImageRotation.rotation0deg;
+
       setState(() => _isInitializing = false);
 
-      await controller.startImageStream(_processImage);
+      // Wait a frame for layout to complete before starting stream
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_returned) {
+          _screenSize = MediaQuery.of(context).size;
+          controller.startImageStream(_processImage);
+        }
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -307,68 +804,85 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
 
   void _processImage(CameraImage image) async {
     if (_isProcessing || _returned || _isCapturing) return;
+
+    // Frame skipping: only process every Nth frame
+    _frameCounter++;
+    if (_frameCounter % (_frameSkip + 1) != 0) return;
+
     _isProcessing = true;
 
     try {
+      if (_imgW == 0) {
+        _imgW = image.width;
+        _imgH = image.height;
+      }
+
       final inputImage = _convertCameraImage(image);
       if (inputImage == null) return;
 
       final recognizedText = await _textRecognizer.processImage(inputImage);
-      final text = recognizedText.text;
 
-      final number = _extractCardNumber(text);
-      final expiry = widget.mode == CardScannerMode.fullCard ? _extractExpiry(text) : null;
-      final name = widget.mode == CardScannerMode.fullCard ? _extractHolderName(text) : null;
+      // Determine screen aspect ratio for ROI calculations
+      final screenSize = _screenSize ?? const Size(360, 800);
+      final aspectRatio = screenSize.width / screenSize.height;
 
-      final now = DateTime.now();
+      final number = _extractCardNumberFromText(
+        recognizedText, _imgW, _imgH, _rotation, aspectRatio,
+      );
+      final expiry = widget.mode == CardScannerMode.fullCard
+          ? _extractExpiryFromText(
+              recognizedText, _imgW, _imgH, _rotation, aspectRatio,
+            )
+          : null;
+      final name = widget.mode == CardScannerMode.fullCard
+          ? _extractHolderNameFromText(
+              recognizedText, _imgW, _imgH, _rotation, aspectRatio,
+            )
+          : null;
 
       if (number != null) {
-        _missedFrames = 0; // reset missed frame counter
-        _firstDetectionTime ??= now;
+        // Feed into per-digit voter
+        _voteTracker.vote(number);
+        if (expiry != null) _previewExpiry = expiry;
+        if (name != null) _previewName = name;
 
-        final isSimilar = _numbersAreSimilar(_bestNumber, number);
-
-        if (_bestNumber == null || !isSimilar) {
-          // New/different number: reset stable frames, but keep first detection time
-          _bestNumber = number;
-          _stableFrames = 1;
+        // Check for consensus
+        final consensus = _voteTracker.getConsensus(_stableVoteThreshold);
+        if (consensus != null) {
+          _votedNumber = consensus;
+          if (mounted) {
+            setState(() {
+              _detectedNumber = consensus;
+              _scanState = _ScanState.confirmed;
+            });
+          }
+          // Haptic feedback on confirmation
+          HapticFeedback.mediumImpact();
+          // Schedule capture after brief delay to let the UI show "confirmed" state
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted && !_returned) _captureAndReturn();
+          });
+          return;
         } else {
-          _stableFrames++;
-          // Update to the longer/complete number if we have it
-          if (number.length >= _bestNumber!.length) {
-            _bestNumber = number;
+          // Partial detection: show best guess so far
+          if (mounted) {
+            setState(() {
+              _detectedNumber = number;
+              _scanState = _ScanState.detecting;
+            });
           }
         }
-
-        // Always update expiry/name if we find them
-        if (expiry != null) _bestExpiry = expiry;
-        if (name != null) _bestName = name;
-
-        if (mounted) {
-          setState(() => _detectedNumber = _bestNumber);
-        }
-
-        final elapsed = now.difference(_firstDetectionTime!).inMilliseconds;
-        final shouldReturnByStability = _stableFrames >= _requiredStableFrames;
-        final shouldReturnByTimeout = elapsed >= _detectionTimeoutMs && _stableFrames >= 1;
-
-        if (shouldReturnByStability || shouldReturnByTimeout) {
-          // Don't await here directly inside image stream callback - schedule it
-          // to avoid stopping the stream while we're inside its callback.
-          _isProcessing = false; // release processing lock before scheduling return
-          _scheduleCaptureAndReturn();
-          return;
-        }
       } else {
-        // No valid number in this frame
-        _missedFrames++;
-        if (_missedFrames >= _maxMissedFrames) {
-          // Only reset after several consecutive misses to be tolerant
-          _stableFrames = 0;
-          _firstDetectionTime = null;
-          _missedFrames = 0;
-          if (mounted && _detectedNumber != null) {
-            setState(() => _detectedNumber = null);
+        // No number found this frame - let voter accumulate, but don't reset
+        // immediately (allow for occasional miss frames).
+        if (_voteTracker.totalVotes > 0 && _voteTracker.totalVotes % 5 == 0) {
+          // Reset if we've had several consecutive misses
+          _voteTracker.reset();
+          if (mounted) {
+            setState(() {
+              _detectedNumber = null;
+              _scanState = _ScanState.searching;
+            });
           }
         }
       }
@@ -377,80 +891,6 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
     } finally {
       _isProcessing = false;
     }
-  }
-
-  /// Schedule capture and return to run after the current frame processing
-  /// completes. This avoids calling stopImageStream/takePicture from directly
-  /// inside the image stream callback.
-  void _scheduleCaptureAndReturn() {
-    if (_returned || _isCapturing) return;
-    // Use a short delay to ensure we're out of the image stream callback
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted && !_returned) {
-        _captureAndReturn();
-      }
-    });
-  }
-
-  bool _numbersAreSimilar(String? a, String? b) {
-    if (a == null || b == null) return false;
-    if (a == b) return true;
-    if (a.contains(b) || b.contains(a)) return true;
-
-    // Same length: allow up to 2 digits difference (OCR can misread 1-2 digits)
-    if (a.length == b.length) {
-      int diffs = 0;
-      for (int i = 0; i < a.length; i++) {
-        if (a[i] != b[i]) diffs++;
-        if (diffs > 2) return false;
-      }
-      return diffs <= 2;
-    }
-
-    // Length differs by 1: check if one is the other with an extra/missing digit
-    if ((a.length - b.length).abs() == 1) {
-      final shorter = a.length < b.length ? a : b;
-      final longer = a.length > b.length ? a : b;
-      for (int offset = 0; offset <= 1; offset++) {
-        bool matches = true;
-        int diffs = 0;
-        for (int i = 0; i < shorter.length; i++) {
-          if (longer[i + offset] != shorter[i]) {
-            diffs++;
-            if (diffs > 1) {
-              matches = false;
-              break;
-            }
-          }
-        }
-        if (matches || diffs <= 1) return true;
-      }
-    }
-
-    // Length differs by 2: possible if OCR added/removed digits at edges
-    if ((a.length - b.length).abs() == 2) {
-      final shorter = a.length < b.length ? a : b;
-      final longer = a.length > b.length ? a : b;
-      // Check if shorter matches a substring of longer (allowing for extra digits at either end)
-      if (longer.contains(shorter)) return true;
-      // Or check with offset up to 2
-      for (int offset = 0; offset <= 2; offset++) {
-        bool matches = true;
-        int diffs = 0;
-        for (int i = 0; i < shorter.length; i++) {
-          if (longer[i + offset] != shorter[i]) {
-            diffs++;
-            if (diffs > 1) {
-              matches = false;
-              break;
-            }
-          }
-        }
-        if (matches) return true;
-      }
-    }
-
-    return false;
   }
 
   InputImage? _convertCameraImage(CameraImage image) {
@@ -499,58 +939,83 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
   Future<void> _captureAndReturn() async {
     if (_returned || _isCapturing) return;
     _isCapturing = true;
+    _globalTimeoutTimer?.cancel();
+
+    if (mounted) {
+      setState(() => _scanState = _ScanState.capturing);
+    }
 
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) {
-      _returnResult(null);
+      _returnResult(_votedNumber ?? _detectedNumber, _previewExpiry, _previewName, null);
       return;
     }
 
-    String? imagePath;
+    String? finalImagePath;
+    String? finalNumber = _votedNumber ?? _detectedNumber;
+    String? finalExpiry = _previewExpiry;
+    String? finalName = _previewName;
 
     try {
-      // Stop image stream first
+      // Stop image stream before taking picture
       try {
         await controller.stopImageStream();
-      } catch (_) {
-        // May already be stopped
-      }
+      } catch (_) {}
 
-      // Small delay to let camera settle after stopping stream
       await Future.delayed(const Duration(milliseconds: 200));
 
       if (widget.mode == CardScannerMode.fullCard) {
-        // Take a picture with timeout protection
         try {
           final XFile photo = await controller.takePicture().timeout(
-            const Duration(seconds: 3),
-            onTimeout: () {
-              throw TimeoutException('takePicture timed out');
-            },
+            const Duration(seconds: 4),
+            onTimeout: () => throw TimeoutException('takePicture timed out'),
           );
+
+          // Save original temporarily
           final tempDir = await getTemporaryDirectory();
-          final fileName = 'card_scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
-          final savedPath = path.join(tempDir.path, fileName);
-          await File(photo.path).copy(savedPath);
-          imagePath = savedPath;
+          final origName = 'card_orig_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          final origPath = path.join(tempDir.path, origName);
+          await File(photo.path).copy(origPath);
+
+          // Crop and enhance to get the final card-only image
+          final croppedPath = await _cropAndEnhancePhoto(origPath);
+          finalImagePath = croppedPath ?? origPath;
+
+          // Run high-accuracy OCR on the cropped/enhanced photo for best results
+          final ocrPath = croppedPath ?? origPath;
+          final stillResult = await _ocrStillImage(ocrPath).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => null,
+          );
+
+          if (stillResult != null) {
+            // Prefer still-image OCR results if they pass Luhn check
+            if (stillResult.number != null && _luhnCheck(stillResult.number!)) {
+              finalNumber = stillResult.number;
+            }
+            finalExpiry = stillResult.expiry ?? finalExpiry;
+            finalName = stillResult.holderName ?? finalName;
+          }
+
+          // Clean up original if we have a cropped version
+          if (croppedPath != null && origPath != croppedPath) {
+            try { await File(origPath).delete(); } catch (_) {}
+          }
         } catch (e) {
-          // Ignore capture errors - still return OCR results
-          debugPrint('Card scanner photo capture failed: $e');
+          debugPrint('Photo capture/OCR failed: $e');
         }
       }
     } catch (_) {
-      // Ignore errors, always try to return what we have
     }
 
-    _returnResult(imagePath);
+    _returnResult(finalNumber, finalExpiry, finalName, finalImagePath);
   }
 
-  void _returnResult(String? imagePath) {
+  void _returnResult(String? number, String? expiry, String? name, String? imagePath) {
     if (_returned) return;
     _returned = true;
     _globalTimeoutTimer?.cancel();
 
-    // Stop camera and clean up
     try {
       _controller?.stopImageStream();
     } catch (_) {}
@@ -558,12 +1023,12 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
     if (!mounted) return;
 
     if (widget.mode == CardScannerMode.numberOnly) {
-      Navigator.pop(context, _bestNumber);
+      Navigator.pop(context, number);
     } else {
       Navigator.pop(context, CardScannerResult(
-        number: _bestNumber,
-        expiry: _bestExpiry,
-        holderName: _bestName,
+        number: number,
+        expiry: expiry,
+        holderName: name,
         frontImagePath: imagePath,
       ));
     }
@@ -574,14 +1039,10 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
-      try {
-        controller.stopImageStream();
-      } catch (_) {}
+      try { controller.stopImageStream(); } catch (_) {}
     } else if (state == AppLifecycleState.resumed) {
       if (!_returned && !_isCapturing) {
-        try {
-          controller.startImageStream(_processImage);
-        } catch (_) {}
+        try { controller.startImageStream(_processImage); } catch (_) {}
       }
     }
   }
@@ -601,9 +1062,7 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
     final title = widget.mode == CardScannerMode.numberOnly
         ? l.scannerTitleNumberOnly
         : l.scannerTitleFront;
-    final hint = widget.mode == CardScannerMode.numberOnly
-        ? l.scannerHintNumberOnly
-        : l.scannerHintFront;
+    _screenSize = MediaQuery.of(context).size;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -638,7 +1097,7 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
             Positioned.fill(
               child: CustomPaint(
                 painter: _CardOverlayPainter(
-                  detectedNumber: _detectedNumber != null,
+                  state: _scanState,
                 ),
               ),
             ),
@@ -647,67 +1106,97 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
               left: 0,
               right: 0,
               bottom: 0,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                color: Colors.black54,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_isCapturing) ...[
-                      const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.greenAccent,
-                              strokeWidth: 2,
-                            ),
-                          ),
-                          SizedBox(width: 12),
-                          Text(
-                            'Taking photo...',
-                            style: TextStyle(color: Colors.greenAccent, fontSize: 14),
-                          ),
-                        ],
-                      ),
-                    ] else if (_detectedNumber != null) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              _formatCardNumber(_detectedNumber!),
-                              style: const TextStyle(
-                                color: Colors.greenAccent,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 1.2,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        l.scannerDetecting,
-                        style: const TextStyle(color: Colors.white70, fontSize: 13),
-                      ),
-                    ] else ...[
-                      Text(
-                        hint,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+              child: _buildBottomPanel(l),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomPanel(AppLocalizations l) {
+    String statusText;
+    Color statusColor;
+    IconData? statusIcon;
+
+    switch (_scanState) {
+      case _ScanState.searching:
+        statusText = widget.mode == CardScannerMode.numberOnly
+            ? l.scannerHintNumberOnly
+            : l.scannerHintFront;
+        statusColor = Colors.white;
+        statusIcon = null;
+        break;
+      case _ScanState.detecting:
+        statusText = l.scannerDetecting;
+        statusColor = Colors.amberAccent;
+        statusIcon = Icons.search;
+        break;
+      case _ScanState.confirmed:
+        statusText = _detectedNumber != null
+            ? _formatCardNumber(_detectedNumber!)
+            : l.scannerDetecting;
+        statusColor = Colors.greenAccent;
+        statusIcon = Icons.check_circle;
+        break;
+      case _ScanState.capturing:
+        statusText = l.scannerCameraInitializing; // Generic "processing" text
+        statusColor = Colors.greenAccent;
+        statusIcon = null;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      color: Colors.black54,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isCapturing || _scanState == _ScanState.capturing) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    color: Colors.greenAccent,
+                    strokeWidth: 2.5,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text(
+                  l.scannerProcessing,
+                  style: TextStyle(color: Colors.greenAccent, fontSize: 15),
+                ),
+              ],
+            ),
+          ] else ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (statusIcon != null) ...[
+                  Icon(statusIcon, color: statusColor, size: 20),
+                  const SizedBox(width: 8),
+                ],
+                Flexible(
+                  child: Text(
+                    statusText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: _scanState == _ScanState.confirmed ? 18 : 14,
+                      fontWeight: _scanState == _ScanState.confirmed
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                      letterSpacing: _scanState == _ScanState.confirmed ? 1.2 : 0.5,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -723,13 +1212,20 @@ class _CardScannerPageState extends State<CardScannerPage> with WidgetsBindingOb
   }
 }
 
+enum _ScanState { searching, detecting, confirmed, capturing }
+
+// =============================================================================
+//  Overlay painter with improved visual feedback
+// =============================================================================
+
 class _CardOverlayPainter extends CustomPainter {
-  final bool detectedNumber;
-  _CardOverlayPainter({required this.detectedNumber});
+  final _ScanState state;
+  _CardOverlayPainter({required this.state});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.black.withValues(alpha: 0.6);
+    // Dimmed background
+    final bgPaint = Paint()..color = Colors.black.withValues(alpha: 0.55);
 
     final cardWidth = size.width * 0.9;
     final cardHeight = cardWidth / 1.586;
@@ -744,43 +1240,105 @@ class _CardOverlayPainter extends CustomPainter {
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
       ..addRRect(cardRect)
       ..fillType = PathFillType.evenOdd;
-    canvas.drawPath(path, paint);
+    canvas.drawPath(path, bgPaint);
+
+    // Border color based on state
+    Color borderColor;
+    double borderWidth;
+    switch (state) {
+      case _ScanState.searching:
+        borderColor = Colors.white;
+        borderWidth = 2;
+        break;
+      case _ScanState.detecting:
+        borderColor = Colors.amberAccent;
+        borderWidth = 2.5;
+        break;
+      case _ScanState.confirmed:
+        borderColor = Colors.greenAccent;
+        borderWidth = 3;
+        break;
+      case _ScanState.capturing:
+        borderColor = Colors.greenAccent;
+        borderWidth = 3;
+        break;
+    }
 
     final borderPaint = Paint()
-      ..color = detectedNumber ? Colors.greenAccent : Colors.white
+      ..color = borderColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = detectedNumber ? 3 : 2;
+      ..strokeWidth = borderWidth;
     canvas.drawRRect(cardRect, borderPaint);
 
+    // Corner accents
     final cornerPaint = Paint()
-      ..color = detectedNumber ? Colors.greenAccent : Colors.white
+      ..color = borderColor
       ..strokeWidth = 4
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
-    const cornerLen = 30.0;
-    // Top-left
-    canvas.drawLine(Offset(cardLeft, cardTop + cornerLen), Offset(cardLeft, cardTop), cornerPaint);
-    canvas.drawLine(Offset(cardLeft, cardTop), Offset(cardLeft + cornerLen, cardTop), cornerPaint);
-    // Top-right
-    canvas.drawLine(Offset(cardLeft + cardWidth - cornerLen, cardTop), Offset(cardLeft + cardWidth, cardTop), cornerPaint);
-    canvas.drawLine(Offset(cardLeft + cardWidth, cardTop), Offset(cardLeft + cardWidth, cardTop + cornerLen), cornerPaint);
-    // Bottom-left
-    canvas.drawLine(Offset(cardLeft, cardTop + cardHeight - cornerLen), Offset(cardLeft, cardTop + cardHeight), cornerPaint);
-    canvas.drawLine(Offset(cardLeft, cardTop + cardHeight), Offset(cardLeft + cornerLen, cardTop + cardHeight), cornerPaint);
-    // Bottom-right
-    canvas.drawLine(Offset(cardLeft + cardWidth - cornerLen, cardTop + cardHeight), Offset(cardLeft + cardWidth, cardTop + cardHeight), cornerPaint);
-    canvas.drawLine(Offset(cardLeft + cardWidth, cardTop + cardHeight - cornerLen), Offset(cardLeft + cardWidth, cardTop + cardHeight), cornerPaint);
+    const cornerLen = 32.0;
 
-    if (!detectedNumber) {
-      canvas.drawRect(
-        Rect.fromLTWH(cardLeft, cardTop + cardHeight / 2, cardWidth, 2),
-        Paint()..color = Colors.white.withValues(alpha: 0.3),
+    // Top-left
+    canvas.drawLine(
+      Offset(cardLeft, cardTop + cornerLen),
+      Offset(cardLeft, cardTop),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(cardLeft, cardTop),
+      Offset(cardLeft + cornerLen, cardTop),
+      cornerPaint,
+    );
+    // Top-right
+    canvas.drawLine(
+      Offset(cardLeft + cardWidth - cornerLen, cardTop),
+      Offset(cardLeft + cardWidth, cardTop),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(cardLeft + cardWidth, cardTop),
+      Offset(cardLeft + cardWidth, cardTop + cornerLen),
+      cornerPaint,
+    );
+    // Bottom-left
+    canvas.drawLine(
+      Offset(cardLeft, cardTop + cardHeight - cornerLen),
+      Offset(cardLeft, cardTop + cardHeight),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(cardLeft, cardTop + cardHeight),
+      Offset(cardLeft + cornerLen, cardTop + cardHeight),
+      cornerPaint,
+    );
+    // Bottom-right
+    canvas.drawLine(
+      Offset(cardLeft + cardWidth - cornerLen, cardTop + cardHeight),
+      Offset(cardLeft + cardWidth, cardTop + cardHeight),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(cardLeft + cardWidth, cardTop + cardHeight - cornerLen),
+      Offset(cardLeft + cardWidth, cardTop + cardHeight),
+      cornerPaint,
+    );
+
+    // Scanning line animation (subtle horizontal line in card region when searching)
+    if (state == _ScanState.detecting) {
+      final scanLineY = cardTop + cardHeight * 0.4;
+      final scanPaint = Paint()
+        ..color = Colors.amberAccent.withValues(alpha: 0.6)
+        ..strokeWidth = 1.5;
+      canvas.drawLine(
+        Offset(cardLeft + 12, scanLineY),
+        Offset(cardLeft + cardWidth - 12, scanLineY),
+        scanPaint,
       );
     }
   }
 
   @override
   bool shouldRepaint(covariant _CardOverlayPainter oldDelegate) {
-    return oldDelegate.detectedNumber != detectedNumber;
+    return oldDelegate.state != state;
   }
 }
