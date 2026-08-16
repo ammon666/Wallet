@@ -313,6 +313,8 @@ class WalletEditScreenState extends State<WalletEditScreen> {
   final List<String> _tags = [];
   final _numberFocusNode = FocusNode();
   final _expiryFocusNode = FocusNode();
+  /// Set to true when the user manually picks an issuer from the dropdown.
+  bool _userOverrodeIssuer = false;
   final List<TextEditingController> _customFieldNameControllers = [];
   final List<TextEditingController> _customFieldValueControllers = [];
 
@@ -376,6 +378,19 @@ class WalletEditScreenState extends State<WalletEditScreen> {
       final detected = CardUtils.detectCardNetwork(_numberController.text);
       if (detected != null && detected != _network) {
         setState(() => _network = detected);
+      }
+      // Auto-detect issuer (only when user hasn't manually overridden).
+      if (!_userOverrodeIssuer) {
+        final detectedIssuer = CardUtils.detectCardIssuer(_numberController.text);
+        if (detectedIssuer != null && detectedIssuer != _issuerController.text) {
+          _issuerController.text = detectedIssuer;
+          final brand = BrandIconService.instance;
+          if (brand.availableIssuers.contains(detectedIssuer)) {
+            _selectedIssuer = detectedIssuer;
+          } else {
+            _selectedIssuer = BrandIconService.issuerOtherSentinel;
+          }
+        }
       }
       _updatePreview();
     });
@@ -680,6 +695,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                   isDark,
                   (newValue) {
                     if (newValue == null) return;
+                    _userOverrodeIssuer = true;
                     setState(() {
                       _selectedIssuer = newValue;
                       if (newValue == BrandIconService.issuerOtherSentinel) {

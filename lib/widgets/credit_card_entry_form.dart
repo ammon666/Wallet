@@ -58,6 +58,11 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   File? _backImageFile;
   bool _showAdditionalDetails = true;
   bool _isSaving = false;
+  /// Set to true when the user manually picks an issuer from the dropdown,
+  /// preventing auto-detection from overwriting their choice.
+  bool _userOverrodeIssuer = false;
+  /// Set to true when the user manually picks a card category.
+  bool _userOverrodeCategory = false;
 
   final _customFieldNameControllers = <TextEditingController>[];
   final _customFieldValueControllers = <TextEditingController>[];
@@ -124,10 +129,41 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   }
 
   void _onNumberChanged() {
-    final detected = CardUtils.detectCardNetwork(_numberController.text);
-    if (detected != null && detected != _network) {
-      setState(() => _network = detected);
-    } else if (mounted) {
+    final text = _numberController.text;
+    bool changed = false;
+
+    // Auto-detect card network.
+    final detectedNetwork = CardUtils.detectCardNetwork(text);
+    if (detectedNetwork != null && detectedNetwork != _network) {
+      _network = detectedNetwork;
+      changed = true;
+    }
+
+    // Auto-detect issuer (only when user hasn't manually overridden).
+    if (!_userOverrodeIssuer) {
+      final detectedIssuer = CardUtils.detectCardIssuer(text);
+      if (detectedIssuer != null && detectedIssuer != _issuerController.text) {
+        _issuerController.text = detectedIssuer;
+        final brand = BrandIconService.instance;
+        if (brand.availableIssuers.contains(detectedIssuer)) {
+          _selectedIssuer = detectedIssuer;
+        } else {
+          _selectedIssuer = BrandIconService.issuerOtherSentinel;
+        }
+        changed = true;
+      }
+    }
+
+    // Auto-detect card category (only if user hasn't manually overridden).
+    if (!_userOverrodeCategory && _cardCategory == null) {
+      final detectedCategory = CardUtils.detectCardCategory(text);
+      if (detectedCategory != null) {
+        _cardCategory = detectedCategory;
+        changed = true;
+      }
+    }
+
+    if (changed || mounted) {
       setState(() {});
     }
   }
@@ -411,6 +447,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                 ],
                 onChanged: (newValue) {
                   if (newValue == null) return;
+                  _userOverrodeIssuer = true;
                   setState(() {
                     _selectedIssuer = newValue;
                     if (newValue == BrandIconService.issuerOtherSentinel) {
@@ -453,8 +490,10 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                     child: Text(l.cardCategoryDebit),
                   ),
                 ],
-                onChanged: (newValue) =>
-                    setState(() => _cardCategory = newValue),
+                onChanged: (newValue) {
+                  _userOverrodeCategory = true;
+                  setState(() => _cardCategory = newValue);
+                },
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(

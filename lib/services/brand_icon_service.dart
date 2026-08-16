@@ -204,7 +204,7 @@ class BrandIconService {
   }) {
     final svg = getNetworkSvg(networkKey);
     if (svg == null) return null;
-    return _renderSvg(svg, width: width, height: height);
+    return _renderSvg(svg, width: width, height: height, alignment: Alignment.centerRight);
   }
 
   /// Renders the issuer icon for [issuerName] inside a fixed bounding box.
@@ -230,12 +230,13 @@ class BrandIconService {
     String svgContent, {
     required double width,
     required double height,
+    Alignment alignment = Alignment.centerLeft,
   }) {
     return SizedBox(
       width: width,
       height: height,
       child: Align(
-        alignment: Alignment.centerLeft,
+        alignment: alignment,
         child: SvgPicture.string(
           svgContent,
           height: height,
