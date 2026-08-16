@@ -60,15 +60,12 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
     return cvv != null && cvv.isNotEmpty;
   }
 
-  /// Renders the CVV label shown next to the expiry on the card detail view.
-  ///
-  /// Mirrors the existing "reveal" semantics: dots by default, digits when
-  /// the parent has flipped [widget.cvvRevealed] to `true`.
+  /// CVV 直接显示明文（不再支持"点遮罩 + 眼睛揭示"开关）。
   String _renderCvvText() {
     final l = AppLocalizations.of(context);
     final cvv = widget.wallet.cvv;
     if (!_cvvHasValue) return l?.naValue ?? 'N/A';
-    return widget.cvvRevealed ? cvv! : '•' * cvv!.length;
+    return cvv!;
   }
 
   @override
@@ -118,7 +115,9 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
 
             Padding(
               padding: const EdgeInsets.symmetric(
-                horizontal: 24.0,
+                // 发卡行/卡组织图标整体往两端再靠一点（从 24 → 20），
+                // 同时保证左右水平对称。
+                horizontal: 20.0,
                 vertical: 20.0,
               ),
               child: Column(
@@ -231,45 +230,11 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                           ),
                         ),
                       ),
-                      // --- CVV（左） + 有效期（右），中间留较大间距 ---
+                      // --- CVV（左） + 竖线分隔 + 有效期（右） ---
                       if (widget.showCvv) ...[
                         const SizedBox(width: 12),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _renderCvvText(),
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                            if (_cvvHasValue && widget.onCvvRevealToggle != null)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 4.0),
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: widget.onCvvRevealToggle,
-                                  child: Icon(
-                                    widget.cvvRevealed
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined,
-                                    size: 16,
-                                    color: Colors.white.withValues(alpha: 0.8),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        // 明确要求的：CVV 与有效期之间要空一些距离间隔。
-                        const SizedBox(width: 32),
-                      ],
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text(
-                          _formatExpiry(widget.wallet.expiry),
+                        Text(
+                          _renderCvvText(),
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
@@ -277,7 +242,31 @@ class _GlassCreditCardState extends State<GlassCreditCard> {
                             letterSpacing: 1.5,
                           ),
                         ),
+                        // CVV 与有效期之间用竖线分割，两侧加空格，让间隔清晰
+                        // 但不显得太拥挤。
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10.0),
+                          child: Text(
+                            '|',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w300,
+                              color: Colors.white70,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                        ),
+                      ],
+                      Text(
+                        _formatExpiry(widget.wallet.expiry),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 1.5,
+                        ),
                       ),
+                      const SizedBox(width: 4),
                     ],
                   ),
                 ],
@@ -308,8 +297,9 @@ class _IssuerBadge extends StatelessWidget {
     final icon = BrandIconService.instance.buildIssuerIcon(
       context,
       (issuer != null && issuer!.trim().isNotEmpty) ? issuer : null,
-      // 与卡组织 buildNetworkIcon 的默认 height 完全一致，保证大小标尺对齐。
-      height: 30,
+      // 与卡组织 buildNetworkIcon 的默认 height 完全一致（32dp），
+      // 保证大小标尺对齐，视觉上左右完全对称。
+      height: 32,
     );
     if (icon != null) {
       // 与卡组织（_NetworkLogo）保持一致：不加任何外框/背景，直接展示。

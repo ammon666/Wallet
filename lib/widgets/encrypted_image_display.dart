@@ -6,6 +6,12 @@ import 'package:wallet/services/encryption_service.dart';
 ///
 /// Automatically decrypts the image directly into memory for security,
 /// avoiding temporary plaintext files on disk.
+///
+/// Performance: on the first render it synchronously peeks the singleton
+/// [EncryptionService] LRU cache. If the image has already been decrypted
+/// during this app session it renders *immediately* with zero async gap (no
+/// spinner flash). Cache misses fall back to the original async decrypt
+/// pipeline, after which the result is stored in the shared cache.
 class EncryptedImageDisplay extends StatefulWidget {
   final String imagePath;
   final double? height;
@@ -40,6 +46,18 @@ class _EncryptedImageDisplayState extends State<EncryptedImageDisplay> {
   @override
   void initState() {
     super.initState();
+    // 1) Fast path: synchronously pull from the shared cache. This is the
+    //    common case when re-entering a detail screen or re-rendering a
+    //    preview tile: we skip setState + the CircularProgressIndicator
+    //    entirely and draw the image on the very first frame.
+    final cached =
+        EncryptionService.instance.peekCachedDecryptedImage(widget.imagePath);
+    if (cached != null) {
+      _imageBytes = cached;
+      _isLoading = false;
+      return;
+    }
+    // 2) Slow path: cache miss. Decrypt asynchronously.
     _decryptImage();
   }
 
@@ -47,6 +65,14 @@ class _EncryptedImageDisplayState extends State<EncryptedImageDisplay> {
   void didUpdateWidget(EncryptedImageDisplay oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.imagePath != widget.imagePath) {
+      final cached =
+          EncryptionService.instance.peekCachedDecryptedImage(widget.imagePath);
+      if (cached != null) {
+        _imageBytes = cached;
+        _isLoading = false;
+        _hasError = false;
+        return;
+      }
       _imageBytes = null;
       _isLoading = true;
       _hasError = false;
@@ -56,10 +82,18 @@ class _EncryptedImageDisplayState extends State<EncryptedImageDisplay> {
 
   Future<void> _decryptImage() async {
     try {
-      setState(() {
-        _isLoading = true;
-        _hasError = false;
-      });
+      // Double-check cache: another widget may have populated the cache
+      // between initState/didUpdateWidget scheduling this microtask and the
+      // event loop actually running it.
+      final cached = EncryptionService.instance
+          .peekCachedDecryptedImage(widget.imagePath);
+      if (cached != null && mounted) {
+        setState(() {
+          _imageBytes = cached;
+          _isLoading = false;
+        });
+        return;
+      }
 
       final bytes = await EncryptionService.instance.decryptImageToBytes(
         widget.imagePath,

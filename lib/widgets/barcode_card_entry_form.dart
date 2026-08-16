@@ -9,8 +9,11 @@ import 'package:wallet/services/barcode_decoder_service.dart';
 import 'package:wallet/services/barcode_utils.dart';
 import 'package:wallet/services/image_service.dart';
 import 'package:wallet/services/auto_backup_service.dart';
+import 'package:wallet/screens/homescreen.dart';
 import 'package:wallet/widgets/barcode_card.dart';
 import 'package:wallet/widgets/color_picker.dart';
+import 'package:wallet/widgets/encrypted_image_display.dart';
+import 'package:wallet/widgets/full_screen_image_viewer.dart';
 import 'package:wallet/models/pass_types.dart';
 
 class BarcodeCardEntryForm extends StatefulWidget {
@@ -270,10 +273,18 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
   }
 
   Widget _buildImagePickerTile(String label, String? path, VoidCallback onTap, bool isDark) {
+    final hasImage = path != null && path.isNotEmpty;
     return Column(
       children: [
         GestureDetector(
-          onTap: onTap,
+          onTap: hasImage
+              ? () => Navigator.push(
+                    context,
+                    SmoothPageRoute(
+                      page: FullScreenImageViewer(imagePath: path),
+                    ),
+                  )
+              : onTap,
           child: Container(
             height: 80,
             width: double.infinity,
@@ -281,18 +292,33 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
               color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: path != null 
-                  ? Colors.green.withValues(alpha: 0.5) 
+                color: hasImage
+                  ? Colors.green.withValues(alpha: 0.5)
                   : (isDark ? Colors.white12 : Colors.black12),
               ),
             ),
-            child: path != null
-              ? const Icon(Icons.check_circle_rounded, color: Colors.green, size: 28)
-              : Icon(
-                  Icons.add_a_photo_outlined,
-                  size: 24,
-                  color: isDark ? Colors.white38 : Colors.black38,
-                ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: !hasImage
+                ? Icon(
+                    Icons.add_a_photo_outlined,
+                    size: 24,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  )
+                : (path!.endsWith('.enc')
+                    ? EncryptedImageDisplay(
+                        imagePath: path,
+                        fit: BoxFit.cover,
+                        cacheWidth: 320,
+                        cacheHeight: 160,
+                      )
+                    : Image.file(
+                        File(path),
+                        fit: BoxFit.cover,
+                        cacheWidth: 320,
+                        cacheHeight: 160,
+                      )),
+            ),
           ),
         ),
         const SizedBox(height: 6),

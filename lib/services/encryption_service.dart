@@ -600,6 +600,24 @@ class EncryptionService {
     _imageCache.clear();
   }
 
+  /// Synchronously peek already-decrypted image bytes from the in-memory
+  /// LRU cache.
+  ///
+  /// Returns `null` on a miss. On a hit the entry is promoted to most-recent
+  /// (exactly the same LRU semantics as [decryptImageToBytes]) so repeat reads
+  /// remain hot.
+  ///
+  /// This is used by [EncryptedImageDisplay] and [FullScreenImageViewer] to
+  /// skip the async gap / loading spinner when an image has already been
+  /// decrypted once during the app session.
+  Uint8List? peekCachedDecryptedImage(String encryptedFilePath) {
+    if (!_imageCache.containsKey(encryptedFilePath)) return null;
+    // Promote to most-recently-used by reinserting at the tail.
+    final bytes = _imageCache.remove(encryptedFilePath)!;
+    _imageCache[encryptedFilePath] = bytes;
+    return bytes;
+  }
+
   /// Check whether existing data has been migrated to encrypted format.
   Future<bool> isMigrated() async {
     try {

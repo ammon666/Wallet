@@ -19,25 +19,45 @@ class FullScreenImageViewer extends StatefulWidget {
 class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
   Uint8List? _bytes;
   bool _isLoading = false;
+  bool _hasError = false;
 
   @override
   void initState() {
     super.initState();
     if (widget.imageBytes != null) {
       _bytes = widget.imageBytes;
-    } else {
-      _loadBytes();
+      return;
     }
+    // Fast path: synchronously pull from the shared cache so the full-screen
+    // viewer opens instantly for any image that has already been decrypted
+    // in the thumbnail / preview widgets.
+    final cached =
+        EncryptionService.instance.peekCachedDecryptedImage(widget.imagePath!);
+    if (cached != null) {
+      _bytes = cached;
+      return;
+    }
+    _loadBytes();
   }
 
   Future<void> _loadBytes() async {
     setState(() => _isLoading = true);
-    final bytes = await EncryptionService.instance.decryptImageToBytes(widget.imagePath!);
-    if (mounted) {
-      setState(() {
-        _bytes = bytes;
-        _isLoading = false;
-      });
+    try {
+      final bytes =
+          await EncryptionService.instance.decryptImageToBytes(widget.imagePath!);
+      if (mounted) {
+        setState(() {
+          _bytes = bytes;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -62,16 +82,18 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
         ),
       ),
       body: Center(
-        child: _isLoading
-            ? const CircularProgressIndicator(color: Colors.white)
-            : _bytes == null
-                ? const Icon(Icons.broken_image, color: Colors.white54, size: 64)
-                : InteractiveViewer(
-                    panEnabled: true,
-                    minScale: 1.0,
-                    maxScale: 4.0,
-                    child: Image.memory(_bytes!, cacheWidth: 1000),
-                  ),
+        child: _hasError
+            ? const Icon(Icons.broken_image, color: Colors.white54, size: 64)
+            : _isLoading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : _bytes == null
+                    ? const Icon(Icons.broken_image, color: Colors.white54, size: 64)
+                    : InteractiveViewer(
+                        panEnabled: true,
+                        minScale: 1.0,
+                        maxScale: 4.0,
+                        child: Image.memory(_bytes!, cacheWidth: 1000),
+                      ),
       ),
     );
   }

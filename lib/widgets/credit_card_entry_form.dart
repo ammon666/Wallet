@@ -11,8 +11,10 @@ import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/services/brand_icon_service.dart';
 import 'package:wallet/services/card_utils.dart';
 import 'package:wallet/services/image_service.dart';
+import 'package:wallet/screens/homescreen.dart';
 import 'package:wallet/widgets/color_picker.dart';
 import 'package:wallet/widgets/form_section.dart';
+import 'package:wallet/widgets/full_screen_image_viewer.dart';
 import 'package:wallet/widgets/glass_credit_card.dart';
 import 'package:wallet/widgets/image_picker_widget.dart';
 
@@ -505,19 +507,51 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
           if (_showAdditionalDetails) ...[
             FormSection(
               children: [
-                ImagePickerWidget(
-                  title: l.frontImage,
-                  imageFile: _frontImageFile,
-                  // 直接打开相册，不再弹出"拍照/相册"来源选择。
-                  onPickImage: () => _pickFromGallery(true),
-                  onRemoveImage: () => setState(() => _frontImageFile = null),
-                ),
-                const SizedBox(height: 16),
-                ImagePickerWidget(
-                  title: l.backImage,
-                  imageFile: _backImageFile,
-                  onPickImage: () => _pickFromGallery(false),
-                  onRemoveImage: () => setState(() => _backImageFile = null),
+                // 正面 / 反面：左右并排显示（选图前按钮 / 选图后图片容器大小一致）。
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: ImagePickerWidget(
+                        title: l.frontImage,
+                        imageFile: _frontImageFile,
+                        // 直接打开相册，不再弹出"拍照/相册"来源选择。
+                        onPickImage: () => _pickFromGallery(true),
+                        onRemoveImage: () =>
+                            setState(() => _frontImageFile = null),
+                        onPreviewImage: _frontImageFile != null
+                            ? () => Navigator.push(
+                                  context,
+                                  SmoothPageRoute(
+                                    page: FullScreenImageViewer(
+                                      imagePath: _frontImageFile!.path,
+                                    ),
+                                  ),
+                                )
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ImagePickerWidget(
+                        title: l.backImage,
+                        imageFile: _backImageFile,
+                        onPickImage: () => _pickFromGallery(false),
+                        onRemoveImage: () =>
+                            setState(() => _backImageFile = null),
+                        onPreviewImage: _backImageFile != null
+                            ? () => Navigator.push(
+                                  context,
+                                  SmoothPageRoute(
+                                    page: FullScreenImageViewer(
+                                      imagePath: _backImageFile!.path,
+                                    ),
+                                  ),
+                                )
+                            : null,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

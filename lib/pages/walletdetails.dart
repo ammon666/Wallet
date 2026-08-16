@@ -30,7 +30,6 @@ class WalletDetailScreen extends StatefulWidget {
 
 class _WalletDetailScreenState extends State<WalletDetailScreen> {
   late Wallet currentWallet;
-  bool _cvvRevealed = false;
 
   @override
   void initState() {
@@ -218,11 +217,6 @@ class _WalletDetailScreenState extends State<WalletDetailScreen> {
             isMasked: false,
             wallet: currentWallet,
             showCvv: true,
-            cvvRevealed: _cvvRevealed,
-            onCvvRevealToggle: () {
-              if (!mounted) return;
-              setState(() => _cvvRevealed = !_cvvRevealed);
-            },
             onCardTap: () async {
               final copied =
                   await ClipboardService.instance.copy(currentWallet.number);
@@ -867,20 +861,29 @@ class WalletEditScreenState extends State<WalletEditScreen> {
               title: l.walletDetailCardImages,
               icon: Icons.photo_library_outlined,
               children: [
-                _buildImagePicker(
-                  l.frontImage,
-                  _frontImageFile,
-                  isDark,
-                  () => _pickImage(ImageSource.gallery, true),
-                  () => setState(() => _frontImageFile = null),
-                ),
-                const SizedBox(height: 16),
-                _buildImagePicker(
-                  l.backImage,
-                  _backImageFile,
-                  isDark,
-                  () => _pickImage(ImageSource.gallery, false),
-                  () => setState(() => _backImageFile = null),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _buildImagePicker(
+                        l.frontImage,
+                        _frontImageFile,
+                        isDark,
+                        () => _pickImage(ImageSource.gallery, true),
+                        () => setState(() => _frontImageFile = null),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildImagePicker(
+                        l.backImage,
+                        _backImageFile,
+                        isDark,
+                        () => _pickImage(ImageSource.gallery, false),
+                        () => setState(() => _backImageFile = null),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1119,13 +1122,18 @@ class WalletEditScreenState extends State<WalletEditScreen> {
             ),
           ),
         ),
-        Center(
+        // 与新增表单保持一致：无论是否添加，固定 150 高度 + 宽度填满。
+        SizedBox(
+          height: 150,
+          width: double.infinity,
           child: imageFile == null
               ? OutlinedButton.icon(
                   icon: const Icon(Icons.add_photo_alternate_outlined),
                   label: Text(l.selectImage),
                   style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(200, 50),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: const EdgeInsets.all(16),
                     side: BorderSide(
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.2)
@@ -1137,57 +1145,64 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                   ),
                   onPressed: onPick,
                 )
-              : Stack(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.1)
-                              : Colors.black.withValues(alpha: 0.08),
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: imageFile.path.endsWith('.enc')
-                            ? EncryptedImageDisplay(
-                                imagePath: imageFile.path,
-                                height: 150,
-                                width: 250,
-                                fit: BoxFit.cover,
-                                cacheWidth: 500,
-                                cacheHeight: 300,
-                              )
-                            : Image.file(
-                                imageFile,
-                                height: 150,
-                                width: 250,
-                                fit: BoxFit.cover,
-                                cacheWidth: 500,
-                                cacheHeight: 300,
-                              ),
-                      ),
+              : GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.push(
+                    context,
+                    SmoothPageRoute(
+                      page: FullScreenImageViewer(imagePath: imageFile!.path),
                     ),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 20,
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : Colors.black.withValues(alpha: 0.08),
+                            ),
                           ),
-                          onPressed: onRemove,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: imageFile.path.endsWith('.enc')
+                                ? EncryptedImageDisplay(
+                                    imagePath: imageFile.path,
+                                    fit: BoxFit.cover,
+                                    cacheWidth: 500,
+                                    cacheHeight: 300,
+                                  )
+                                : Image.file(
+                                    imageFile,
+                                    fit: BoxFit.cover,
+                                    cacheWidth: 500,
+                                    cacheHeight: 300,
+                                  ),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            onPressed: onRemove,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
         ),
       ],
