@@ -225,6 +225,8 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
       expiry: _expiryController.text.padRight(4, '•'),
       network: _network,
       color: _selectedColor,
+      cardCategory: _cardCategory,
+      tags: _tags.isNotEmpty ? _tags : null,
     );
 
     return Form(
@@ -363,9 +365,10 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                   if (newValue == null) return;
                   setState(() {
                     _selectedIssuer = newValue;
-                    // 当用户选中库内已有选项时，直接写入 issuer controller；
-                    // 否则保持 controller 为空，等用户在下方手动填。
-                    if (newValue != BrandIconService.issuerOtherSentinel) {
+                    if (newValue == BrandIconService.issuerOtherSentinel) {
+                      // 切换到「其他」时清空输入框，让用户手动输入。
+                      _issuerController.text = '';
+                    } else {
                       _issuerController.text = newValue;
                     }
                   });
@@ -408,7 +411,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
               DropdownButtonFormField<String>(
                 value: _network,
                 decoration: InputDecoration(labelText: l.cardNetworkLabel),
-                items: ['visa', 'mastercard', 'unionpay', 'amex', 'discover', 'jcb', 'rupay'].map((
+                items: ['unionpay', 'visa', 'mastercard', 'amex', 'discover', 'jcb', 'rupay'].map((
                   String value,
                 ) {
                   return DropdownMenuItem<String>(

@@ -586,6 +586,8 @@ class WalletEditScreenState extends State<WalletEditScreen> {
       expiry: _expiryController.text,
       network: _network,
       color: _selectedColor,
+      cardCategory: _cardCategory,
+      tags: _tags.isNotEmpty ? _tags : null,
     );
 
     return Scaffold(
@@ -723,7 +725,10 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                     if (newValue == null) return;
                     setState(() {
                       _selectedIssuer = newValue;
-                      if (newValue != BrandIconService.issuerOtherSentinel) {
+                      if (newValue == BrandIconService.issuerOtherSentinel) {
+                        // 编辑模式下切换到「其他」时保留当前 issuer 值（可能是自定义名称），
+                        // 让用户在输入框中直接修改。
+                      } else {
                         _issuerController.text = newValue;
                       }
                     });
@@ -782,7 +787,7 @@ class WalletEditScreenState extends State<WalletEditScreen> {
                       setState(() => _network = newValue);
                     }
                   },
-                  ['visa', 'mastercard', 'unionpay', 'amex', 'discover', 'jcb', 'rupay']
+                  ['unionpay', 'visa', 'mastercard', 'amex', 'discover', 'jcb', 'rupay']
                       .map((String value) {
                     return DropdownMenuItem<String>(
                       value: value,

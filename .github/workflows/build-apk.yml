@@ -488,6 +488,22 @@ jobs:
 
           echo "✓ Renamed APK: ${APK_NAME} (Beijing time: ${BUILD_TIME_ISO})"
 
+      - name: Collect Commit Log
+        if: success()
+        run: |
+          # Get commits since the last tag (or all commits if no tags exist).
+          # Output as markdown bullet list for the Release body.
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || git rev-list --max-parents=0 HEAD | tail -1)
+          if [ -n "$LAST_TAG" ]; then
+            COMMIT_LOG=$(git log "${LAST_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges 2>/dev/null || echo "- (无法获取提交记录)")
+          else
+            COMMIT_LOG="- (首次发布，无历史提交)"
+          fi
+
+          # Write to file (env vars can't reliably carry multiline strings).
+          echo "$COMMIT_LOG" > /tmp/commit_log.md
+          echo "✓ Commit log collected ($(echo "$COMMIT_LOG" | wc -l) entries)"
+
       - name: Upload Release APK
         if: success()
         uses: actions/upload-artifact@v4
@@ -517,28 +533,61 @@ jobs:
       #                  → Wallet-v1.0.41-20260816-223052.apk
       #   Release body:  Displays full BUILD_TIME_ISO (Beijing time) down to the second.
       # ================================================================
+      - name: Generate Release Body
+        if: success()
+        env:
+          VERSION_NAME: ${{ env.VERSION_NAME }}
+          VERSION_CODE: ${{ env.VERSION_CODE }}
+          ARCH: ${{ env.ARCH }}
+          BUILD_TIME_ISO: ${{ env.BUILD_TIME_ISO }}
+          FULL_SHA: ${{ github.sha }}
+          SHA7: ${{ env.SHA7 }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import os, textwrap
+          try:
+              with open('/tmp/commit_log.md') as f:
+                  commit_log = f.read().strip()
+          except FileNotFoundError:
+              commit_log = '- (无法获取提交记录)'
+          if not commit_log:
+              commit_log = '- (无提交记录)'
+
+          body = textwrap.dedent(f"""\
+          ## 构建信息
+
+          - **版本**: `{os.environ['VERSION_NAME']}` (build `{os.environ['VERSION_CODE']}`)
+          - **架构**: `{os.environ['ARCH']}` (arm64-v8a)
+          - **构建时间**: `{os.environ['BUILD_TIME_ISO']}`
+          - **Commit**: `{os.environ['FULL_SHA']}` (`{os.environ['SHA7']}`)
+          - **分支**: `{os.environ['REF_NAME']}`
+          - **触发**: `{os.environ['EVENT_NAME']}`
+
+          ## 本次变更
+
+          {commit_log}
+
+          ## 下载说明
+
+          - 直接下载 `.apk` 文件安装即可
+
+          ---
+          *此为 Draft 版本，仅协作者可见。如需公开发布，请到 Releases 页面手动 Publish。*
+          """)
+          with open('/tmp/release_body.md', 'w') as f:
+              f.write(body)
+          print('✓ Release body generated')
+          PY
+
       - name: Create Draft Release with APK
         if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}-${{ env.BUILD_TS }}
           name: Wallet v${{ env.VERSION_NAME }} — ${{ env.BUILD_TIME_ISO }}
-          body: |
-            ## 构建信息
-
-            - **版本**: `${{ env.VERSION_NAME }}` (build `${{ env.VERSION_CODE }}`)
-            - **架构**: `${{ env.ARCH }}` (arm64-v8a)
-            - **构建时间**: `${{ env.BUILD_TIME_ISO }}`
-            - **Commit**: `${{ github.sha }}` (`${{ env.SHA7 }}`)
-            - **分支**: `${{ github.ref_name }}`
-            - **触发**: `${{ github.event_name }}`
-
-            ## 下载说明
-
-            - 直接下载 `.apk` 文件安装即可
-
-            ---
-            *此为 Draft 版本，仅协作者可见。如需公开发布，请到 Releases 页面手动 Publish。*
+          body_path: /tmp/release_body.md
           files: |
             build/release/${{ env.APK_NAME }}
           draft: true

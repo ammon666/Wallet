@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:wallet/services/encryption_service.dart';
@@ -43,8 +44,20 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
   Future<void> _loadBytes() async {
     setState(() => _isLoading = true);
     try {
-      final bytes =
-          await EncryptionService.instance.decryptImageToBytes(widget.imagePath!);
+      Uint8List? bytes;
+      // For non-encrypted files (e.g. freshly picked from gallery before
+      // saving to the database), read raw bytes directly instead of going
+      // through the decrypt pipeline (which calls readAsString() and may
+      // corrupt binary image data).
+      if (widget.imagePath!.endsWith('.enc')) {
+        bytes = await EncryptionService.instance
+            .decryptImageToBytes(widget.imagePath!);
+      } else {
+        final file = File(widget.imagePath!);
+        if (await file.exists()) {
+          bytes = await file.readAsBytes();
+        }
+      }
       if (mounted) {
         setState(() {
           _bytes = bytes;

@@ -889,8 +889,35 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Pinyin initial letter map for sorting Chinese bank names.
+  static const Map<String, String> _pinyinInitials = {
+    '北': 'B', '邮': 'Y',
+    '建': 'J', '交': 'J', '江': 'J',
+    '广': 'G', '工': 'G', '光': 'G', '国': 'G', '桂': 'G',
+    '华': 'H', '汇': 'H', '徽': 'H',
+    '浦': 'P', '平': 'P',
+    '三': 'S', '上': 'S', '深': 'S', '苏': 'S',
+    '网': 'W',
+    '招': 'Z', '中': 'Z', '众': 'Z',
+    '杭': 'H', '恒': 'H', '湖': 'H',
+    '农': 'N', '宁': 'N', '南': 'N',
+    '民': 'M', '兴': 'X', '渝': 'Y', '浙': 'Z',
+  };
+
+  /// Returns a sortable key for issuer names based on the pinyin initial
+  /// of the second character (the first meaningful character of Chinese
+  /// bank names, e.g. "交通银行" → "交" → J).
+  static String _issuerPinyinKey(String name) {
+    if (name.length < 2) return '~$name';
+    final ch = name[1];
+    final initial = _pinyinInitials[ch];
+    if (initial != null) return '${initial}_$name';
+    return '~${ch.codeUnits.first.toRadixString(16)}_$name';
+  }
+
   /// Returns the issuer name for display, falling back to localized "Unknown".
   String _getIssuerName(Wallet wallet, AppLocalizations l) {
+
     if (wallet.issuer != null && wallet.issuer!.isNotEmpty) {
       return wallet.issuer!;
     }
@@ -989,7 +1016,14 @@ class _HomeScreenState extends State<HomeScreen> {
         for (final w in searchedWallets) {
           uniqueIssuers.add(_getIssuerName(w, l));
         }
-        final sortedIssuers = uniqueIssuers.toList()..sort();
+        final sortedIssuers = uniqueIssuers.toList()
+          ..sort((a, b) {
+            // 使用 BrandIconService 的拼音排序逻辑，保持与添加表单一致。
+            final keyA = _issuerPinyinKey(a);
+            final keyB = _issuerPinyinKey(b);
+            if (keyA != keyB) return keyA.compareTo(keyB);
+            return a.compareTo(b);
+          });
 
         // 6. 不再按发卡行强行分组显示；默认同发卡行已通过 orderIndex 聚合，
         //    用户可跨发卡行自由拖动并重排，顺序持久化保存。
