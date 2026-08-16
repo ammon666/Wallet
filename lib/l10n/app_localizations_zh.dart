@@ -1414,79 +1414,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get unknownIssuer => '未知发卡行';
 
   @override
-  String get scannerTitleFront => '扫描卡片正面';
+  String get selectImageSource => '选择图片来源';
 
   @override
-  String get scannerTitleBack => '扫描卡片背面';
+  String get chooseFromGallery => '从相册选择';
 
   @override
-  String get scannerTitleNumberOnly => '扫描卡号';
+  String get takePhoto => '拍照';
 
   @override
-  String get scannerHintFront => '将卡片对齐框内，保持平稳，自动识别';
-
-  @override
-  String get scannerHintBack => '将卡背面 CVV 区对准框内，自动识别';
-
-  @override
-  String get scannerHintNumberOnly => '将卡号对准框内，保持平稳，自动识别';
-
-  @override
-  String get scannerShutterHint => '手动点击按钮拍照（对焦清晰后再拍）';
-
-  @override
-  String get scannerNextBack => '去拍摄背面';
-
-  @override
-  String get scannerFinish => '完成';
-
-  @override
-  String get scannerRetake => '重新拍摄';
-
-  @override
-  String get scannerSkipBack => '跳过背面';
-
-  @override
-  String get scannerCropOk => '✓ 已识别卡片边缘并自动裁切';
-
-  @override
-  String get scannerCropFallback => '未检测到卡片边缘，已保留原始照片';
-
-  @override
-  String get scannerProcessing => '处理中…';
-
-  @override
-  String get scannerOcrInProgress => '正在识别文字…';
-
-  @override
-  String get scannerOcrFailed => '识别失败';
-
-  @override
-  String get scannerCaptureFailed => '拍照失败';
-
-  @override
-  String get scannerCameraInitializing => '正在启动相机…';
-
-  @override
-  String get scannerDetecting => '识别中…';
-
-  @override
-  String get scannerCameraPermissionDenied => '相机权限被拒绝，请到系统设置开启';
-
-  @override
-  String get scannerNoCameraFound => '设备上没有可用相机';
-
-  @override
-  String get scannerUnknownError => '未知错误';
-
-  @override
-  String get scannerCameraInitFailed => '相机启动失败';
-
-  @override
-  String get addCardActionScan => '扫描添加卡片';
-
-  @override
-  String get scanCardNumberTooltip => '扫描识别卡号';
+  String get processing => '处理中…';
 
   @override
   String get splashAuthRequiredTitle => '需要验证';

@@ -137,6 +137,16 @@ class DatabaseHelper {
 
   Future<int> insertWallet(Wallet wallet) async {
     Database db = await instance.database;
+    // 如果调用方没有显式设置 orderIndex（保持默认0），自动追加到列表末尾，
+    // 避免插入到最前面打乱用户已保存的排序。
+    if (wallet.orderIndex == 0) {
+      final result = await db.query(
+        'wallets',
+        columns: ['MAX(orderIndex) AS max_oid'],
+      );
+      final maxOid = result.first['max_oid'] as int? ?? -1;
+      wallet.orderIndex = maxOid + 1;
+    }
     return await db.insert('wallets', wallet.toEncryptedMap());
   }
 

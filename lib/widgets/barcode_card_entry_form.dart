@@ -2,10 +2,13 @@ import 'dart:io';
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/services/barcode_decoder_service.dart';
 import 'package:wallet/services/barcode_utils.dart';
+import 'package:wallet/services/image_processing_service.dart';
 import 'package:wallet/services/image_service.dart';
 import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/widgets/barcode_card.dart';
@@ -245,18 +248,98 @@ class BarcodeCardEntryFormState extends State<BarcodeCardEntryForm> {
   }
 
   Future<void> _pickImage(bool isFront) async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      final encryptedPath = await saveImageToAppDirectory(File(pickedFile.path));
-      setState(() {
-        if (isFront) {
-          _frontImagePath = encryptedPath;
-        } else {
-          _backImagePath = encryptedPath;
-        }
-      });
+    await _showImageSourceDialog(isFront);
+  }
+
+  Future<void> _showImageSourceDialog(bool isFront) async {
+    final l = AppLocalizations.of(context)!;
+    final source = await showDialog<ImageSource>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF0A0A0A)
+            : Colors.white,
+        title: Text(l.selectImageSource),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text(l.chooseFromGallery),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: Text(l.takePhoto),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source != null) {
+      await _pickAndProcessImage(source, isFront);
     }
+  }
+
+  Future<void> _pickAndProcessImage(ImageSource source, bool isFront) async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: source,
+      maxWidth: 2400,
+      maxHeight: 2400,
+      imageQuality: 92,
+    );
+    if (pickedFile == null) return;
+    if (!mounted) return;
+
+    final l = AppLocalizations.of(context)!;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 16),
+              Flexible(child: Text(l.processing)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    File? tempFile;
+    try {
+      final rawBytes = await File(pickedFile.path).readAsBytes();
+      final processedBytes = await ImageProcessingService.instance
+          .processCardPhoto(rawBytes);
+      final directory = await getApplicationDocumentsDirectory();
+      final tempName =
+          'proc_${DateTime.now().microsecondsSinceEpoch}${p.extension(pickedFile.path)}';
+      final tempPath = p.join(directory.path, tempName);
+      tempFile = await File(tempPath).writeAsBytes(processedBytes);
+    } catch (_) {
+      tempFile = File(pickedFile.path);
+    } finally {
+      Navigator.of(context).pop();
+    }
+
+    final encryptedPath = await saveImageToAppDirectory(tempFile);
+    setState(() {
+      if (isFront) {
+        _frontImagePath = encryptedPath;
+      } else {
+        _backImagePath = encryptedPath;
+      }
+    });
   }
 
   Widget _buildImagePickerTile(String label, String? path, VoidCallback onTap, bool isDark) {

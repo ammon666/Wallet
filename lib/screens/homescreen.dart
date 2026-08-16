@@ -991,22 +991,11 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         final sortedIssuers = uniqueIssuers.toList()..sort();
 
-        // 6. Group by issuer (sorted alphabetically; within group by orderIndex)
-        final Map<String, List<Wallet>> byIssuer = {};
-        for (final w in filteredWallets) {
-          final issuer = _getIssuerName(w, l);
-          byIssuer.putIfAbsent(issuer, () => []).add(w);
-        }
-        final groupedIssuers = byIssuer.keys.toList()..sort();
-
-        // 7. Build mixed list [Header, Card, Card, Header, Card, ...]
-        final List<_PaymentListItem> items = [];
-        for (final issuer in groupedIssuers) {
-          items.add(_PaymentListItem.header(issuer, byIssuer[issuer]!.length));
-          for (final w in byIssuer[issuer]!) {
-            items.add(_PaymentListItem.card(w));
-          }
-        }
+        // 6. 不再按发卡行强行分组显示；默认同发卡行已通过 orderIndex 聚合，
+        //    用户可跨发卡行自由拖动并重排，顺序持久化保存。
+        final List<_PaymentListItem> items = filteredWallets
+            .map((w) => _PaymentListItem.card(w))
+            .toList();
 
         return CustomScrollView(
           physics: const BouncingScrollPhysics(
@@ -1181,80 +1170,19 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverReorderableList(
                 itemCount: items.length,
                 onReorder: (oldIndex, newIndex) {
-                  // Headers cannot be dragged; archived view is read-only for reorder.
-                  if (items[oldIndex].isHeader) return;
+                  // 归档视图不允许重排；现在所有条目都是卡片（无 header），允许跨发卡行全局拖动。
                   if (_showArchived) return;
 
-                  // Find the group boundaries for the dragged card.
-                  int groupStart = oldIndex;
-                  while (groupStart > 0 && !items[groupStart].isHeader) {
-                    groupStart--;
-                  }
-                  int groupEnd = oldIndex + 1;
-                  while (groupEnd < items.length && !items[groupEnd].isHeader) {
-                    groupEnd++;
-                  }
-
-                  // Only allow reordering within the same issuer group.
-                  if (newIndex <= groupStart || newIndex > groupEnd) return;
-
-                  // Convert mixed-list indices to filtered-list (wallet-only) indices.
-                  int oldFilteredIndex = 0;
-                  for (int i = 0; i < oldIndex; i++) {
-                    if (!items[i].isHeader) oldFilteredIndex++;
-                  }
-                  int newFilteredIndex = 0;
-                  for (int i = 0; i < newIndex; i++) {
-                    if (!items[i].isHeader) newFilteredIndex++;
-                  }
-
                   HapticFeedback.lightImpact();
+                  // items 与 filteredWallets 一一对应（无分组 header），可直接使用索引。
                   context.read<WalletProvider>().reorderDisplayWallets(
                         filteredWallets,
-                        oldFilteredIndex,
-                        newFilteredIndex,
+                        oldIndex,
+                        newIndex,
                       );
                 },
                 itemBuilder: (context, index) {
-                  final item = items[index];
-
-                  // Group header — not draggable, not reorderable.
-                  if (item.isHeader) {
-                    return Container(
-                      key: ValueKey('header_${item.headerText}'),
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.account_balance_outlined,
-                            size: 14,
-                            color: (isDark ? Colors.white : Colors.black)
-                                .withValues(alpha: 0.4),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            item.headerText!,
-                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: (isDark ? Colors.white : Colors.black)
-                                      .withValues(alpha: 0.5),
-                                  letterSpacing: 0.5,
-                                ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${item.headerCount}',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: (isDark ? Colors.white : Colors.black)
-                                      .withValues(alpha: 0.3),
-                                ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  final wallet = item.wallet!;
+                  final wallet = items[index].wallet!;
                   return ReorderableDelayedDragStartListener(
                     key: ValueKey(wallet.id),
                     index: index,

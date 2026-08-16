@@ -1435,85 +1435,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get unknownIssuer => 'Unknown Issuer';
 
   @override
-  String get scannerTitleFront => 'Scan Front of Card';
+  String get selectImageSource => 'Select Image Source';
 
   @override
-  String get scannerTitleBack => 'Scan Back of Card';
+  String get chooseFromGallery => 'Choose from Gallery';
 
   @override
-  String get scannerTitleNumberOnly => 'Scan Card Number';
+  String get takePhoto => 'Take Photo';
 
   @override
-  String get scannerHintFront =>
-      'Align card inside the green frame and tap the shutter when focused';
-
-  @override
-  String get scannerHintBack =>
-      'Align the back of the card (signature strip + CVV) inside the frame';
-
-  @override
-  String get scannerHintNumberOnly =>
-      'Frame the card number in the rectangle, then tap to scan';
-
-  @override
-  String get scannerShutterHint =>
-      'Manual shutter — tap only when the image is sharp';
-
-  @override
-  String get scannerNextBack => 'Scan Back Side';
-
-  @override
-  String get scannerFinish => 'Done';
-
-  @override
-  String get scannerRetake => 'Retake';
-
-  @override
-  String get scannerSkipBack => 'Skip Back';
-
-  @override
-  String get scannerCropOk => '✓ Card edges detected and auto-cropped';
-
-  @override
-  String get scannerCropFallback =>
-      'Could not detect edges; keeping original photo';
-
-  @override
-  String get scannerProcessing => 'Processing…';
-
-  @override
-  String get scannerOcrInProgress => 'Recognising text…';
-
-  @override
-  String get scannerOcrFailed => 'OCR failed';
-
-  @override
-  String get scannerCaptureFailed => 'Capture failed';
-
-  @override
-  String get scannerCameraInitializing => 'Starting camera…';
-
-  @override
-  String get scannerDetecting => 'Detecting…';
-
-  @override
-  String get scannerCameraPermissionDenied =>
-      'Camera permission denied — enable it in Settings';
-
-  @override
-  String get scannerNoCameraFound => 'No camera available on this device';
-
-  @override
-  String get scannerUnknownError => 'Unknown error';
-
-  @override
-  String get scannerCameraInitFailed => 'Failed to start camera';
-
-  @override
-  String get addCardActionScan => 'Scan to add card';
-
-  @override
-  String get scanCardNumberTooltip => 'Scan card number';
+  String get processing => 'Processing…';
 
   @override
   String get splashAuthRequiredTitle => 'Authentication Required';

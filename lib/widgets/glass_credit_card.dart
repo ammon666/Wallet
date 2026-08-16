@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/card_color_data.dart';
+import 'package:wallet/services/brand_icon_service.dart';
 import 'package:wallet/services/card_utils.dart';
 import 'package:wallet/widgets/network_brand_logos.dart';
 import '../models/db_helper.dart';
@@ -207,6 +208,27 @@ class _IssuerBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
+    // 优先使用 txt 文件中打包的发卡行 SVG 图标；找不到再使用文字 fallback。
+    final icon = BrandIconService.instance.buildIssuerIcon(
+      context,
+      (issuer != null && issuer!.trim().isNotEmpty) ? issuer : null,
+      height: 28,
+    );
+    if (icon != null) {
+      return Container(
+        constraints: const BoxConstraints(maxWidth: 170),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 0.5,
+          ),
+        ),
+        child: icon,
+      );
+    }
     final raw = (issuer != null && issuer!.trim().isNotEmpty)
         ? issuer!.trim()
         : (CardUtils.networkDisplayNameLocalized(network, l) ?? 'CARD');
@@ -244,17 +266,26 @@ class _NetworkLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 优先使用矢量品牌 logo（完全匹配官方色彩与样式）
-    final brandLogo = NetworkBrandLogos.build(network, height: 36);
-    if (brandLogo != null) {
-      return brandLogo;
+    const double targetHeight = 32;
+    // 优先使用 txt 文件中打包的卡组织 SVG 图标（统一高度保证大小一致）。
+    final svgIcon = BrandIconService.instance.buildNetworkIcon(
+      context,
+      network,
+      height: targetHeight,
+    );
+    if (svgIcon != null) {
+      return svgIcon;
     }
+    // Fallback 1: 现有的 CustomPaint 矢量 logo。
+    final brandLogo = NetworkBrandLogos.build(network, height: targetHeight);
+    if (brandLogo != null) {
+      return SizedBox(height: targetHeight, child: brandLogo);
+    }
+    // Fallback 2: assets 目录下的 PNG。
     return Image.asset(
       "assets/network/${network ?? 'visa'}.png",
       fit: BoxFit.contain,
-      height: 36,
-      // 注意：不再加 `color: Colors.white`，避免把彩色 logo 全部染白。
-      // 只有 silhouette 类图片（全黑/单色）才需要染色，但现有彩色品牌图不允许。
+      height: targetHeight,
       errorBuilder: (context, error, stackTrace) {
         final l = AppLocalizations.of(context)!;
         return Text(

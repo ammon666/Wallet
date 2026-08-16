@@ -7,6 +7,7 @@ import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/theme_provider.dart';
 import 'package:wallet/models/startup_settings_provider.dart';
 import 'package:wallet/services/app_initialization_service.dart';
+import 'package:wallet/services/brand_icon_service.dart';
 import 'package:wallet/services/encryption_service.dart';
 import 'models/auto_backup_provider.dart';
 import 'models/provider_helper.dart';
@@ -27,6 +28,7 @@ void main() async {
     startupProvider.loadStartupSettings(),
     autoBackupProvider.init(),
     AppInitializationService.initializeApp(),
+    BrandIconService.instance.ensureInitialized(),
   ]);
 
   AutoBackupService.initialize(autoBackupProvider);

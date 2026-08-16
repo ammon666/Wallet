@@ -6,7 +6,6 @@ import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/models/provider_helper.dart';
 import 'package:wallet/models/startup_settings_provider.dart';
 import 'package:wallet/models/theme_provider.dart';
-import 'package:wallet/pages/card_scanner_page.dart';
 import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/services/pkpass_service.dart';
 import 'package:wallet/widgets/barcode_card_entry_form.dart';
@@ -29,14 +28,6 @@ class AddCardScreen extends StatefulWidget {
 }
 
 class _AddCardScreenState extends State<AddCardScreen> {
-  /// When the user taps the "scan card" entry-point (top-right of Add card
-  /// screen) we run a full card scan → then REBUILD the
-  /// [CreditCardEntryForm] passing this result so every field is pre-filled.
-  /// NOTE: The new flutter_credit_card_scanner package does NOT return images,
-  /// only OCR'd text fields (number/expiry/holderName). Front/back images
-  /// can still be picked manually from the entry form.
-  CardScannerResult? _scannerResult;
-
   Future<void> _importPkpass() async {
     final l = AppLocalizations.of(context)!;
     try {
@@ -100,20 +91,6 @@ class _AddCardScreenState extends State<AddCardScreen> {
     }
   }
 
-  Future<void> _launchFullCardScan() async {
-    final result = await Navigator.push<CardScannerResult>(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            const CardScannerPage(mode: CardScannerMode.fullCard),
-      ),
-    );
-    if (!mounted || result == null) return;
-    // OCR may not have found every field — the entry form leaves existing
-    // controller values alone for any null field in the result.
-    setState(() => _scannerResult = result);
-  }
-
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
@@ -166,7 +143,6 @@ class _AddCardScreenState extends State<AddCardScreen> {
           initialColor: ColorPicker.pickAppleCardColorDefault(
             excludeColors: existingColors,
           ),
-          initialScanResult: _scannerResult,
         );
         break;
     }
@@ -189,30 +165,6 @@ class _AddCardScreenState extends State<AddCardScreen> {
           ),
         ),
         actions: [
-          if (effectiveIndex == 0)
-            Container(
-              margin: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF0F0F0),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TextButton.icon(
-                icon: Icon(
-                  Icons.document_scanner_outlined,
-                  color: textColor,
-                  size: 18,
-                ),
-                label: Text(
-                  l.addCardActionScan,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                onPressed: _launchFullCardScan,
-              ),
-            ),
           if (effectiveIndex == 1)
             Container(
               margin: const EdgeInsets.all(8),

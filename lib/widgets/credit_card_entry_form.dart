@@ -2,13 +2,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/db_helper.dart';
 import 'package:wallet/models/theme_provider.dart';
-import 'package:wallet/pages/card_scanner_page.dart';
 import 'package:wallet/services/auto_backup_service.dart';
 import 'package:wallet/services/card_utils.dart';
+import 'package:wallet/services/image_processing_service.dart';
 import 'package:wallet/services/image_service.dart';
 import 'package:wallet/widgets/color_picker.dart';
 import 'package:wallet/widgets/form_section.dart';
@@ -18,15 +20,9 @@ import 'package:wallet/widgets/image_picker_widget.dart';
 class CreditCardEntryForm extends StatefulWidget {
   final String? initialColor;
 
-  /// Populated by AddCardScreen when the user chooses "scan to add a card"
-  /// entry-point. Contains the OCR parse + both cropped JPEGs.
-  /// We read it in [initState] to pre-fill all fields.
-  final CardScannerResult? initialScanResult;
-
   const CreditCardEntryForm({
     super.key,
     this.initialColor,
-    this.initialScanResult,
   });
 
   @override
@@ -74,107 +70,6 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
         _formKey.currentState?.validate();
       }
     });
-
-    // If the caller pushed the Add Card screen WITH a pre-performed scan
-    // result (entry point "scan to add card"), apply it now.
-    final pre = widget.initialScanResult;
-    if (pre != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _applyScanOcr(pre);
-      });
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant CreditCardEntryForm oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Handle the case where initialScanResult is set after initial build
-    // (e.g., when user taps "scan" button from AddCardScreen).
-    final newResult = widget.initialScanResult;
-    final oldResult = oldWidget.initialScanResult;
-    if (newResult != null && newResult != oldResult) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _applyScanOcr(newResult);
-      });
-    }
-    // Update color if changed
-    if (widget.initialColor != oldWidget.initialColor &&
-        widget.initialColor != null) {
-      _selectedColor = widget.initialColor!;
-    }
-  }
-
-  /// Applies OCR field values and captured card image returned from the
-  /// scanner page into the form state.
-  void _applyScanOcr(CardScannerResult r) {
-    // Capture nullable fields into local non-null vars to avoid Dart's
-    // "no promotion of nullable member variables inside closures" pitfall.
-    final number = r.number;
-    final expiry = r.expiry;
-    final holder = r.holderName;
-    final imagePath = r.frontImagePath;
-    setState(() {
-      if (number != null && number.isNotEmpty) {
-        _numberController.text = number;
-        // Auto-detect network (visa/mastercard/...) from the scanned number.
-        final detected = CardUtils.detectCardNetwork(number);
-        if (detected != null) {
-          _network = detected;
-        }
-      }
-      if (expiry != null && expiry.isNotEmpty) {
-        // Expiry comes back as MM/YY; the form stores MMYY (4 digits only).
-        _expiryController.text = expiry.replaceAll('/', '');
-      }
-      if (holder != null && holder.isNotEmpty) {
-        // Note: the name field is user-visible label (中文). We only populate
-        // if existing label is empty; otherwise leave as-is. A cardholder name
-        // is often Latin ("LI LEI"), not equal to the user's card label.
-        if (_nameController.text.isEmpty) {
-          _nameController.text = holder;
-        }
-      }
-      if (imagePath != null && imagePath.isNotEmpty) {
-        final imageFile = File(imagePath);
-        if (imageFile.existsSync()) {
-          _frontImageFile = imageFile;
-        }
-      }
-    });
-  }
-
-  /// Entry-point 2: "scan just the card number" small button next to the
-  /// card-number TextField. Launches the scanner in number-only mode and
-  /// replaces the card-number field with whatever was detected.
-  Future<void> _launchNumberOnlyScan() async {
-    final result = await Navigator.push<String>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const CardScannerPage(mode: CardScannerMode.numberOnly),
-      ),
-    );
-    if (!mounted || result == null || result.isEmpty) return;
-    setState(() => _numberController.text = result);
-  }
-
-  void _onFieldChanged() {
-    if (mounted) setState(() {});
-  }
-
-  void _onNumberChanged() {
-    final detected = CardUtils.detectCardNetwork(_numberController.text);
-    if (detected != null && detected != _network) {
-      setState(() => _network = detected);
-    } else if (mounted) {
-      setState(() {});
-    }
-  }
-
-  /// Get maximum card number length
-  int _getMaxCardLength(String network) {
-    return 19;
   }
 
   @override
@@ -199,14 +94,108 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     super.dispose();
   }
 
+  void _onFieldChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onNumberChanged() {
+    final detected = CardUtils.detectCardNetwork(_numberController.text);
+    if (detected != null && detected != _network) {
+      setState(() => _network = detected);
+    } else if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// Get maximum card number length
+  int _getMaxCardLength(String network) {
+    return 19;
+  }
+
+  Future<void> _showImageSourceDialog(bool isFront) async {
+    final l = AppLocalizations.of(context)!;
+    final source = await showDialog<ImageSource>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF0A0A0A)
+            : Colors.white,
+        title: Text(l.selectImageSource),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text(l.chooseFromGallery),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: Text(l.takePhoto),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source != null) {
+      await _pickImage(source, isFront);
+    }
+  }
+
   Future<void> _pickImage(ImageSource source, bool isFront) async {
     final pickedFile = await _picker.pickImage(
       source: source,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
+      maxWidth: 2400,
+      maxHeight: 2400,
+      imageQuality: 92,
     );
-    if (pickedFile != null) {
+    if (pickedFile == null) return;
+    if (!mounted) return;
+
+    final l = AppLocalizations.of(context)!;
+    // Show loading while running offline edge/crop pipeline.
+    final dialog = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 16),
+              Flexible(child: Text(l.processing)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final rawBytes = await File(pickedFile.path).readAsBytes();
+      final processedBytes = await ImageProcessingService.instance
+          .processCardPhoto(rawBytes);
+      final directory = await getApplicationDocumentsDirectory();
+      final tempName =
+          'proc_${DateTime.now().microsecondsSinceEpoch}${p.extension(pickedFile.path)}';
+      final tempPath = p.join(directory.path, tempName);
+      final tempFile = await File(tempPath).writeAsBytes(processedBytes);
+
+      setState(() {
+        if (isFront) {
+          _frontImageFile = tempFile;
+        } else {
+          _backImageFile = tempFile;
+        }
+      });
+    } catch (_) {
+      // Fallback: keep the original photo without processing.
       setState(() {
         if (isFront) {
           _frontImageFile = File(pickedFile.path);
@@ -214,6 +203,8 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
           _backImageFile = File(pickedFile.path);
         }
       });
+    } finally {
+      Navigator.of(context).pop();
     }
   }
 
@@ -332,17 +323,6 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                       return Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Entry point 2: Scan card number
-                          IconButton(
-                            tooltip: l.scanCardNumberTooltip,
-                            icon: Icon(
-                              Icons.center_focus_strong_rounded,
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.78)
-                                  : Colors.black.withValues(alpha: 0.70),
-                            ),
-                            onPressed: _launchNumberOnlyScan,
-                          ),
                           // Network badge (hidden until filled)
                           if (detectedNetwork != null &&
                               _numberController.text.isNotEmpty)
@@ -555,14 +535,14 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
                 ImagePickerWidget(
                   title: l.frontImage,
                   imageFile: _frontImageFile,
-                  onPickImage: () => _pickImage(ImageSource.gallery, true),
+                  onPickImage: () => _showImageSourceDialog(true),
                   onRemoveImage: () => setState(() => _frontImageFile = null),
                 ),
                 const SizedBox(height: 16),
                 ImagePickerWidget(
                   title: l.backImage,
                   imageFile: _backImageFile,
-                  onPickImage: () => _pickImage(ImageSource.gallery, false),
+                  onPickImage: () => _showImageSourceDialog(false),
                   onRemoveImage: () => setState(() => _backImageFile = null),
                 ),
               ],

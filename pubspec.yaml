@@ -14,7 +14,6 @@ dependencies:
   archive: ^4.0.9
   barcode_scan2: ^4.4.0
   barcode_widget: ^2.0.4
-  camera: ^0.12.0+2
   cryptography_plus: ^3.0.0
   crypto: ^3.0.5
   encrypt: ^5.0.3
@@ -25,9 +24,8 @@ dependencies:
     sdk: flutter
   flutter_secure_storage: ^10.0.0
   flutter_slidable: ^4.0.0
-  flutter_credit_card_scanner: ^0.12.0
-  google_mlkit_commons: ^0.11.1
-  google_mlkit_text_recognition: ^0.15.0
+  flutter_svg: ^2.0.17
+  image: ^4.8.0
   image_picker: ^1.2.0
   intl: ^0.20.0
   local_auth: ^2.3.0
@@ -41,7 +39,6 @@ dependencies:
   url_launcher: ^6.3.1
   zxing_lib: ^1.1.4
   receive_sharing_intent: ^1.9.0
-  image: ^4.8.0
 
 dev_dependencies:
   flutter_test:

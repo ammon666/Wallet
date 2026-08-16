@@ -8,6 +8,26 @@ class WalletProvider with ChangeNotifier {
 
   Future<void> fetchWallets() async {
     wallets = await DatabaseHelper.instance.getWalletsSummary();
+    // 若用户从未调整过顺序（所有 orderIndex 都相同，默认都是0），
+    // 则先按发卡行聚合排序（同发卡行的默认挨在一起），然后依次分配 orderIndex，
+    // 之后完全按用户的持久化 orderIndex 展示，不再强行分组。
+    if (wallets.isNotEmpty) {
+      final firstOid = wallets.first.orderIndex;
+      final allSame = wallets.every((w) => w.orderIndex == firstOid);
+      if (allSame) {
+        wallets.sort((a, b) {
+          final ia = (a.issuer ?? '').trim().toLowerCase();
+          final ib = (b.issuer ?? '').trim().toLowerCase();
+          if (ia != ib) return ia.compareTo(ib);
+          // 同发卡行内部保持原有 id 顺序
+          return (a.id ?? 0).compareTo(b.id ?? 0);
+        });
+        for (int i = 0; i < wallets.length; i++) {
+          wallets[i].orderIndex = i;
+        }
+        await DatabaseHelper.instance.updateWalletsOrder(wallets);
+      }
+    }
     notifyListeners();
   }
 

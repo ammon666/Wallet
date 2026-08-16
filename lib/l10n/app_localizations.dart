@@ -2834,155 +2834,29 @@ abstract class AppLocalizations {
   /// **'Unknown Issuer'**
   String get unknownIssuer;
 
-  /// AppBar title for scanning card front
+  /// Title for choosing between gallery or camera
   ///
   /// In en, this message translates to:
-  /// **'Scan Front of Card'**
-  String get scannerTitleFront;
+  /// **'Select Image Source'**
+  String get selectImageSource;
 
-  /// AppBar title for scanning card back
+  /// Pick image from gallery option
   ///
   /// In en, this message translates to:
-  /// **'Scan Back of Card'**
-  String get scannerTitleBack;
+  /// **'Choose from Gallery'**
+  String get chooseFromGallery;
 
-  /// AppBar title for number-only scanning
+  /// Capture a new photo option
   ///
   /// In en, this message translates to:
-  /// **'Scan Card Number'**
-  String get scannerTitleNumberOnly;
+  /// **'Take Photo'**
+  String get takePhoto;
 
-  /// No description provided for @scannerHintFront.
-  ///
-  /// In en, this message translates to:
-  /// **'Align card inside the green frame and tap the shutter when focused'**
-  String get scannerHintFront;
-
-  /// No description provided for @scannerHintBack.
-  ///
-  /// In en, this message translates to:
-  /// **'Align the back of the card (signature strip + CVV) inside the frame'**
-  String get scannerHintBack;
-
-  /// No description provided for @scannerHintNumberOnly.
-  ///
-  /// In en, this message translates to:
-  /// **'Frame the card number in the rectangle, then tap to scan'**
-  String get scannerHintNumberOnly;
-
-  /// No description provided for @scannerShutterHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Manual shutter — tap only when the image is sharp'**
-  String get scannerShutterHint;
-
-  /// No description provided for @scannerNextBack.
-  ///
-  /// In en, this message translates to:
-  /// **'Scan Back Side'**
-  String get scannerNextBack;
-
-  /// No description provided for @scannerFinish.
-  ///
-  /// In en, this message translates to:
-  /// **'Done'**
-  String get scannerFinish;
-
-  /// No description provided for @scannerRetake.
-  ///
-  /// In en, this message translates to:
-  /// **'Retake'**
-  String get scannerRetake;
-
-  /// No description provided for @scannerSkipBack.
-  ///
-  /// In en, this message translates to:
-  /// **'Skip Back'**
-  String get scannerSkipBack;
-
-  /// No description provided for @scannerCropOk.
-  ///
-  /// In en, this message translates to:
-  /// **'✓ Card edges detected and auto-cropped'**
-  String get scannerCropOk;
-
-  /// No description provided for @scannerCropFallback.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not detect edges; keeping original photo'**
-  String get scannerCropFallback;
-
-  /// No description provided for @scannerProcessing.
+  /// Generic busy hint while processing an image
   ///
   /// In en, this message translates to:
   /// **'Processing…'**
-  String get scannerProcessing;
-
-  /// No description provided for @scannerOcrInProgress.
-  ///
-  /// In en, this message translates to:
-  /// **'Recognising text…'**
-  String get scannerOcrInProgress;
-
-  /// No description provided for @scannerOcrFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'OCR failed'**
-  String get scannerOcrFailed;
-
-  /// No description provided for @scannerCaptureFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Capture failed'**
-  String get scannerCaptureFailed;
-
-  /// No description provided for @scannerCameraInitializing.
-  ///
-  /// In en, this message translates to:
-  /// **'Starting camera…'**
-  String get scannerCameraInitializing;
-
-  /// No description provided for @scannerDetecting.
-  ///
-  /// In en, this message translates to:
-  /// **'Detecting…'**
-  String get scannerDetecting;
-
-  /// No description provided for @scannerCameraPermissionDenied.
-  ///
-  /// In en, this message translates to:
-  /// **'Camera permission denied — enable it in Settings'**
-  String get scannerCameraPermissionDenied;
-
-  /// No description provided for @scannerNoCameraFound.
-  ///
-  /// In en, this message translates to:
-  /// **'No camera available on this device'**
-  String get scannerNoCameraFound;
-
-  /// No description provided for @scannerUnknownError.
-  ///
-  /// In en, this message translates to:
-  /// **'Unknown error'**
-  String get scannerUnknownError;
-
-  /// No description provided for @scannerCameraInitFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to start camera'**
-  String get scannerCameraInitFailed;
-
-  /// Tooltip for scan entry-point button in Add card screen
-  ///
-  /// In en, this message translates to:
-  /// **'Scan to add card'**
-  String get addCardActionScan;
-
-  /// No description provided for @scanCardNumberTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Scan card number'**
-  String get scanCardNumberTooltip;
+  String get processing;
 
   /// No description provided for @splashAuthRequiredTitle.
   ///
