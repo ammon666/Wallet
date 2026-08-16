@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:wallet/l10n/app_localizations.dart';
 import 'package:wallet/models/db_helper.dart';
@@ -34,6 +33,7 @@ class CreditCardEntryForm extends StatefulWidget {
 
 class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   final _formKey = GlobalKey<FormState>();
+  final _scrollController = ScrollController();
   final _nameController = TextEditingController();
   final _numberController = TextEditingController();
   final _expiryController = TextEditingController();
@@ -42,6 +42,11 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
   final _tagController = TextEditingController();
   final _numberFocusNode = FocusNode();
   final _expiryFocusNode = FocusNode();
+  // GlobalKeys for scrolling to the first error field on validation failure.
+  final _nameFieldKey = GlobalKey();
+  final _numberFieldKey = GlobalKey();
+  final _expiryFieldKey = GlobalKey();
+  final _issuerFieldKey = GlobalKey();
   String _network = "visa";
   String? _cardCategory; // 'credit' | 'debit' | null
   final List<String> _tags = [];
@@ -96,6 +101,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     _nameController.removeListener(_onFieldChanged);
     _numberController.removeListener(_onNumberChanged);
     _expiryController.removeListener(_onFieldChanged);
+    _scrollController.dispose();
     _nameController.dispose();
     _numberController.dispose();
     _expiryController.dispose();
@@ -151,8 +157,46 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     });
   }
 
+  /// Scrolls the ListView to bring the widget identified by [key] into view.
+  void _scrollToField(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      alignment: 0.3, // show the field at 30% from the top
+    );
+  }
+
+  /// Validates the form and scrolls to the first field that has an error.
+  bool _validateAndScroll() {
+    final isValid = _formKey.currentState!.validate();
+    if (isValid) return true;
+    // Find the first field with an error and scroll to it.
+    final fieldKeys = [_nameFieldKey, _numberFieldKey, _expiryFieldKey, _issuerFieldKey];
+    for (final key in fieldKeys) {
+      final ctx = key.currentContext;
+      if (ctx == null) continue;
+      // Check if this TextFormField has a validation error by looking
+      // for the error text in the nearest TextFormFieldState.
+      final state = ctx.findAncestorStateOfType<FormFieldState>();
+      if (state != null && state.hasError) {
+        _scrollToField(key);
+        return false;
+      }
+    }
+    // Fallback: scroll to top if no specific error field found.
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    return false;
+  }
+
   void _addData() async {
-    if (_formKey.currentState!.validate()) {
+    if (_validateAndScroll()) {
       setState(() => _isSaving = true);
       try {
         String? frontImagePath;
@@ -232,6 +276,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
     return Form(
       key: _formKey,
       child: ListView(
+        controller: _scrollController,
         padding: const EdgeInsets.all(16.0),
         children: [
           GlassCreditCard(
@@ -249,12 +294,14 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
               ),
               const SizedBox(height: 24),
               TextFormField(
+                key: _nameFieldKey,
                 controller: _nameController,
                 decoration: InputDecoration(labelText: l.cardNameLabel),
                 validator: (v) => v!.isEmpty ? l.validationEnterName : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
+                key: _numberFieldKey,
                 controller: _numberController,
                 focusNode: _numberFocusNode,
                 decoration: InputDecoration(
@@ -307,6 +354,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
               ),
               const SizedBox(height: 16),
               TextFormField(
+                key: _expiryFieldKey,
                 controller: _expiryController,
                 focusNode: _expiryFocusNode,
                 decoration: InputDecoration(labelText: l.expiryLabel),
@@ -377,6 +425,7 @@ class _CreditCardEntryFormState extends State<CreditCardEntryForm> {
               if (_selectedIssuer == BrandIconService.issuerOtherSentinel) ...[
                 const SizedBox(height: 16),
                 TextFormField(
+                  key: _issuerFieldKey,
                   controller: _issuerController,
                   decoration: const InputDecoration(
                     labelText: '自定义发卡行',
